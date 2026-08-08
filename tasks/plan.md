@@ -224,6 +224,46 @@ LangGraph Agent 的标准数据工具。CSV 仍是数据源，DuckDB 直接查�
 
 - 不做对话记忆、不做 Function Calling 多轮，不接向量库。
 
+---
+
+# 切片八：失败重试、结构化日志与人工确认
+
+## 目标
+
+落地 md 阶段四"可控、可评估、可追溯"：工具调用失败自动重试、每次运行
+输出结构化 JSON 日志、结论显式标记需人工确认。
+
+## 范围
+
+- 新增 `tools/retry.py`：`with_retry(func, attempts=3, backoff=0.2)`
+  返回 `(result, attempts_used)`，指数退避重试，最后一次失败才抛出。
+- `agent/llm_parser.py`：`_call_ollama`/`_call_glm` 包 `with_retry(attempts=2)`，
+  网络抖动时重试，仍失败则回退规则（现有逻辑）。
+- `tools/sql_tool.py`：`_execute` 包 `with_retry(attempts=2)`。
+- 新增 `agent/run_logger.py`：`log_run(report, trace, provider, elapsed_ms)`
+  写 `logs/run_<ts>_<id>.json`：时间戳、问题、后端、筛选、状态、不良率、
+  候选因素、steps（含耗时）、requires_human_review。
+- `agent/workflow.py`：`QualityAgent(records, llm_provider=None, log_dir=None)`
+  `answer()` 计时并在运行结束时写日志（日志失败不影响主流程）。
+- `agent/graph.py`：成功报告增加 `requires_human_review=True`（统计候选
+  不等同因果，需人工确认）；no_data 为 False。
+- `app.py`：证据区下方"标记为已确认"按钮 + 确认徽章。
+- `.gitignore` 增加 `logs/`。
+- 新增 `tests/test_retry.py`、`tests/test_run_logger.py`。
+
+## 验收标准
+
+1. `with_retry`：前 2 次失败第 3 次成功返回结果与 attempts_used；全失败抛错。
+2. `QualityAgent.answer()` 后 `log_dir` 下生成合法 JSON，字段齐全。
+3. 成功报告带 `requires_human_review=True`，no_data 为 False。
+4. 全量测试绿，评测基线不丢。
+
+## 不做
+
+- 不做 LangGraph interrupt 真暂停节点（页面按钮 + 标记已够 MVP）。
+- 不做日志轮转与审计查询界面。
+
+
 
 
 

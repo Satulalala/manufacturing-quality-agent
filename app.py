@@ -212,8 +212,13 @@ if run_analysis or "quality_report" not in st.session_state or provider != st.se
 ):
     st.session_state.quality_question = question
     st.session_state.quality_provider = provider
+    st.session_state.quality_confirmed = False
     try:
-        st.session_state.quality_report = QualityAgent(records, llm_provider=provider).answer(question)
+        st.session_state.quality_report = QualityAgent(
+            records,
+            llm_provider=provider,
+            log_dir=_APP_ROOT / "logs",
+        ).answer(question)
     except ValueError as error:
         st.error(f"分析参数无效：{error}")
         st.stop()
@@ -333,6 +338,20 @@ if top_factors:
         for index, item in enumerate(top_factors, start=1)
     ]
     st.dataframe(pd.DataFrame(evidence_rows), hide_index=True, width="stretch")
+
+if report.get("requires_human_review"):
+    confirmed = st.session_state.get("quality_confirmed", False)
+    if not confirmed:
+        review_clicked = st.button(
+            "标记为已确认",
+            type="secondary",
+            icon=":material/verified:",
+            help="确认已结合现场设备、工艺和维修记录核对过该结论。",
+        )
+        if review_clicked:
+            st.session_state.quality_confirmed = True
+    else:
+        st.success(f":material/verified: 已标记为人工确认（{st.session_state.get('quality_run_at', '')}）")
 
 st.subheader("知识库引用")
 if report.get("knowledge_refs"):

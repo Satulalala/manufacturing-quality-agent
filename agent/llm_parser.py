@@ -22,6 +22,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+from tools.retry import with_retry
+
 
 DEFAULT_YEAR = "2026"
 _CHINESE_DATE_RANGE = re.compile(r"(\d{1,2})月(\d{1,2})日(?:到|至)(\d{1,2})月(\d{1,2})日")
@@ -112,7 +114,7 @@ def _call_http(url: str, api_key: str | None, question: str, model: str, timeout
 def _call_ollama(question: str, timeout: float) -> dict[str, object]:
     base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
     model = os.environ.get("QUALITY_LLM_MODEL", "qwen2.5:7b")
-    return _call_http(f"{base_url}/chat/completions", None, question, model, timeout)
+    return with_retry(lambda: _call_http(f"{base_url}/chat/completions", None, question, model, timeout), attempts=2)[0]
 
 
 def _call_glm(question: str, timeout: float) -> dict[str, object]:
@@ -121,7 +123,7 @@ def _call_glm(question: str, timeout: float) -> dict[str, object]:
     if not api_key:
         raise ValueError("GLM_API_KEY is not set")
     model = os.environ.get("QUALITY_LLM_MODEL", "glm-4-flash")
-    return _call_http(f"{base_url}/chat/completions", api_key, question, model, timeout)
+    return with_retry(lambda: _call_http(f"{base_url}/chat/completions", api_key, question, model, timeout), attempts=2)[0]
 
 
 def _sanitize_llm_filters(raw: object) -> dict[str, str | list[str] | None]:

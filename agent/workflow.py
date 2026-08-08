@@ -8,7 +8,10 @@ this module keeps the public ``QualityAgent`` and text rendering API stable.
 
 from __future__ import annotations
 
+import os
 import re
+import time
+from pathlib import Path
 from typing import Iterable, Mapping
 
 from agent.graph import build_graph
@@ -56,7 +59,12 @@ def _recommendation(dimension: str) -> str:
 class QualityAgent:
     """Coordinate deterministic quality tools and produce an evidence report."""
 
-    def __init__(self, records: Iterable[Record], llm_provider: str | None = None):
+    def __init__(
+        self,
+        records: Iterable[Record],
+        llm_provider: str | None = None,
+        log_dir: str | Path | None = None,
+    ):
         self.records = [dict(record) for record in records]
         if llm_provider is not None:
             from agent.llm_parser import make_parse_fn
@@ -64,8 +72,11 @@ class QualityAgent:
             self.graph = build_graph(parse_fn=make_parse_fn(llm_provider))
         else:
             self.graph = build_graph()
+        self.provider = llm_provider or os.environ.get("QUALITY_LLM_PROVIDER", "mock")
+        self.log_dir = Path(log_dir) if log_dir else None
 
     def answer(self, question: str, top_n: int = 3) -> dict[str, object]:
+        started = time.perf_counter()
         state = self.graph.invoke(
             initial_state(self.records, question),
             config={"recursion_limit": 20},
@@ -74,6 +85,15 @@ class QualityAgent:
         if report["status"] == "success":
             report["top_factors"] = report["top_factors"][:top_n]
         report["trace"] = state["trace"]
+        elapsed_ms = (time.perf_counter() - started) * 1000
+
+        if self.log_dir is not None:
+            try:
+                from agent.run_logger import log_run
+
+                log_run(report, state["trace"], self.provider, elapsed_ms, log_dir=self.log_dir)
+            except Exception:
+                pass
         return report
 
 

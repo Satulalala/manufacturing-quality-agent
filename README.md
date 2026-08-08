@@ -19,6 +19,11 @@
   检索不到时明确说明，不编造来源。
 - **调用链追踪**：页面展示完整执行过程（解析 → 筛选 → 分析 → 知识库 → 报告），
   每次工具调用附记录，全流程可审计。
+- **结构化运行日志**：每次分析写入 `logs/run_*.json`（问题、筛选条件、每步
+  耗时、状态、不良率、候选因素、人工确认标记），可追溯可统计。
+- **工具失败重试**：LLM 调用、SQL 执行自动重试（指数退避），网络抖动不降级。
+- **人工确认标记**：统计候选结论带 `requires_human_review` 标记，页面提供
+  "标记为已确认"按钮，符合"相关性不等于因果性"的工业约束。
 - **解析条件回显**：页面显示本次问题解析出的查询条件（日期范围/产线/车型），
   发现解析不对可以立即看到。
 - **知识库引用卡片**：命中时以卡片展示文档名、章节和原文摘要；未命中明确说明。
@@ -189,11 +194,13 @@ agent/workflow.py              Agent 公共入口和报告渲染（兼容层）
 agent/graph.py                 LangGraph 节点图（parse→query→analyze→knowledge→report）
 agent/state.py                 LangGraph 状态定义
 agent/llm_parser.py            可插拔 LLM 解析（mock/ollama/glm，自动回退规则）
+agent/run_logger.py            结构化运行日志（logs/run_*.json）
+tools/retry.py                 工具调用重试（指数退避）
 app.py                         Streamlit 可视化分析台
 run_demo.py                    命令行入口
-evaluation/cases.json          固定问题集（20 题）
+evaluation/cases.json          固定问题集（22 题）
 evaluation/evaluate.py         评测：任务完成率/数值准确率/响应时间
-tests/                         单元测试（49 个）
+tests/                         单元测试（68 个）
 tasks/plan.md                  切片二至六的开发规格与验收记录
 ```
 

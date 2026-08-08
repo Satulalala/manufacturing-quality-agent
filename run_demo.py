@@ -27,7 +27,7 @@ def main() -> None:
         write_records(records, data_path)
         print(f"已生成演示数据：{data_path.resolve()}\n")
 
-    report = QualityAgent(records).answer(args.question)
+    report = QualityAgent(records, log_dir=Path("logs")).answer(args.question)
     print(render_text_report(report))
 
 

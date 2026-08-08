@@ -14,6 +14,7 @@ from pathlib import Path
 import duckdb
 
 from data.demo_data import FIELDNAMES
+from tools.retry import with_retry
 
 
 ALLOWED_TABLES = frozenset({"production_records"})
@@ -95,10 +96,13 @@ def _connect(csv_path: str | Path) -> duckdb.DuckDBPyConnection:
 
 
 def _execute(connection: duckdb.DuckDBPyConnection, sql: str, params: list[object]) -> dict[str, object]:
-    cursor = connection.execute(sql, params)
-    columns = [description[0] for description in cursor.description]
-    records = [dict(zip(columns, row)) for row in cursor.fetchall()]
-    return {"status": "success", "row_count": len(records), "records": records}
+    def run() -> dict[str, object]:
+        cursor = connection.execute(sql, params)
+        columns = [description[0] for description in cursor.description]
+        records = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return {"status": "success", "row_count": len(records), "records": records}
+
+    return with_retry(run, attempts=2, backoff=0.1)[0]
 
 
 def run_readonly_query(

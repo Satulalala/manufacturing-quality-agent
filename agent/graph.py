@@ -68,6 +68,7 @@ def report_node(state: QualityState) -> dict[str, object]:
             "top_factors": [],
             "knowledge_refs": [],
             "knowledge_summary": "未检索到与问题相关的知识库文档，不编造来源。",
+            "requires_human_review": False,
             "summary": "没有符合条件的生产记录，无法生成质量结论。",
         }
         _trace(state, "generate_report", "no_data")
@@ -95,6 +96,7 @@ def report_node(state: QualityState) -> dict[str, object]:
         "filters": state["filters"],
         "baseline": baseline,
         "top_factors": factors,
+        "requires_human_review": True,
         "limitations": [
             "候选因素基于统计差异排序，不等同于已证明的因果关系。",
             "建议结合现场设备、工艺和维修记录进行人工确认。",
