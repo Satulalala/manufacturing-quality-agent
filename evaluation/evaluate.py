@@ -48,8 +48,21 @@ def run_case(agent, case: Mapping[str, object]) -> dict[str, object]:
     status_ok = report["status"] == expected_status
 
     failed_checks: list[str] = []
-    if "expected_line" in case and str(report["filters"].get("production_line")) != str(case["expected_line"]):
-        failed_checks.append("expected_line")
+    filters = report["filters"]
+    line_value = filters.get("production_line")
+    if "expected_line" in case:
+        if isinstance(line_value, list):
+            line_matches = str(case["expected_line"]) in [str(item) for item in line_value]
+        else:
+            line_matches = str(line_value) == str(case["expected_line"])
+        if not line_matches:
+            failed_checks.append("expected_line")
+    if "expected_start_date" in case and str(filters.get("start_date")) != str(case["expected_start_date"]):
+        failed_checks.append("expected_start_date")
+    if "expected_end_date" in case and str(filters.get("end_date")) != str(case["expected_end_date"]):
+        failed_checks.append("expected_end_date")
+    if "expected_vehicle_model" in case and str(filters.get("vehicle_model")) != str(case["expected_vehicle_model"]):
+        failed_checks.append("expected_vehicle_model")
     expected_dimensions = case.get("expected_dimensions")
     if expected_dimensions:
         actual = {str(factor["dimension"]) for factor in report["top_factors"]}
@@ -63,7 +76,13 @@ def run_case(agent, case: Mapping[str, object]) -> dict[str, object]:
         "elapsed_ms": elapsed_ms,
         "failed_checks": failed_checks,
         "ok": status_ok and not failed_checks,
-        "accuracy_checked": bool(case.get("expected_line") or case.get("expected_dimensions")),
+        "accuracy_checked": bool(
+            case.get("expected_line")
+            or case.get("expected_start_date")
+            or case.get("expected_end_date")
+            or case.get("expected_vehicle_model")
+            or case.get("expected_dimensions")
+        ),
     }
 
 
@@ -114,7 +133,10 @@ def main() -> None:
         write_records(records, data_path)
 
     cases = load_cases()
-    metrics = run_evaluation(QualityAgent(records), cases)
+    metrics = run_evaluation(
+        QualityAgent(records, llm_provider="mock"),
+        cases,
+    )
 
     print(f"问题总数：{metrics['total']}")
     print(f"任务完成率：{metrics['completion_count']}/{metrics['total']} = {metrics['completion_rate'] * 100:.1f}%")

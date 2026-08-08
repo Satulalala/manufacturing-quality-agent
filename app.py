@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from pathlib import Path
 
 _APP_ROOT = Path(__file__).resolve().parent
@@ -30,6 +31,26 @@ DIMENSION_LABELS = {
     "supplier_id": "供应商",
     "batch_id": "批次",
 }
+LLM_PROVIDERS = {"mock": "模拟器（规则，无需配置）", "ollama": "本地 Ollama", "glm": "智谱 GLM"}
+TRACE_ICONS = {
+    "parse_question": "search",
+    "filter_records": "filter_alt",
+    "rank_candidate_causes": "leaderboard",
+    "retrieve_quality_documents": "menu_book",
+    "generate_report": "description",
+}
+
+
+def format_filters(filters: dict[str, object]) -> str:
+    start = str(filters.get("start_date") or "不限")
+    end = str(filters.get("end_date") or "不限")
+    line = filters.get("production_line")
+    if isinstance(line, list):
+        line_text = "、".join(str(item) for item in line)
+    else:
+        line_text = str(line) if line else "不限"
+    model = str(filters.get("vehicle_model") or "不限")
+    return f"{start} ~ {end} · 产线 {line_text} · 车型 {model}"
 
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
@@ -51,19 +72,34 @@ st.markdown(
     }
     .stApp { background: var(--canvas); color: var(--ink); }
     .block-container { max-width: 1440px; padding-top: 1.5rem; padding-bottom: 2rem; }
-    [data-testid="stSidebar"] { background: #202923; }
-    [data-testid="stSidebar"] * { color: #f4f6f3; }
-    [data-testid="stSidebar"] [data-baseweb="textarea"] textarea {
-        background: #ffffff; color: var(--ink); border-radius: 4px;
-    }
+    [data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid var(--line); }
+    [data-testid="stSidebar"] * { color: var(--ink); }
+    [data-testid="stSidebar"] h3 { margin-top: 0.25rem; font-size: 1.05rem !important; }
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] { color: var(--muted); }
     [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
-        background: #2a352e; border-color: #56645b; border-radius: 4px;
+        background: #f4f6f3; border: 1px dashed #aeb8b1; border-radius: 6px;
+        padding: 0.25rem;
+    }
+    [data-testid="stSidebar"] [data-baseweb="textarea"] textarea {
+        background: #ffffff; color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+    }
+    [data-testid="stSidebar"] [data-baseweb="textarea"] textarea:focus {
+        border-color: var(--accent);
+    }
+    [data-testid="stSidebar"] [data-baseweb="select"] > div {
+        border: 1px solid var(--line) !important; border-radius: 6px; background: #ffffff;
+    }
+    [data-testid="stSidebar"] [data-baseweb="popover"] { border: 1px solid var(--line); border-radius: 6px; }
+    [data-testid="stSidebar"] [data-baseweb="popover"] * { color: var(--ink) !important; }
+    [data-testid="stSidebar"] [data-baseweb="popover"] li:hover { background: #edf5f0; }
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div > [data-testid="stVerticalBlockBorderWrapper"] {
+        background: #f8faf9; border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem 0.9rem;
     }
     [data-testid="stSidebar"] .stButton button {
-        width: 100%; background: #e8b34b; color: #182019; border: 0;
-        border-radius: 4px; font-weight: 700; min-height: 2.75rem;
+        width: 100%; background: #176b52; color: #ffffff; border: 0;
+        border-radius: 6px; font-weight: 700; min-height: 2.75rem;
     }
-    [data-testid="stSidebar"] .stButton button:hover { background: #f0c66e; color: #182019; }
+    [data-testid="stSidebar"] .stButton button:hover { background: #145a46; color: #ffffff; }
     [data-testid="stMetric"] {
         min-height: 116px; background: var(--surface); border: 1px solid var(--line);
         border-radius: 6px; padding: 0.85rem 1rem;
@@ -82,6 +118,9 @@ st.markdown(
         padding: 0.9rem 1rem; margin: 0.75rem 0 1rem; border-radius: 0 4px 4px 0;
     }
     .data-note { color: var(--muted); font-size: 0.84rem; }
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    }
     @media (max-width: 768px) {
         .block-container { padding: 1rem 0.75rem; }
         h1 { font-size: 1.45rem !important; }
@@ -123,17 +162,38 @@ def build_trend(records: list[dict[str, object]], filters: dict[str, object]) ->
 
 
 with st.sidebar:
-    st.header("分析请求")
-    uploaded = st.file_uploader("生产记录 CSV", type=["csv"])
+    st.markdown("### :material/fact_check: 质量分析请求")
+    st.caption("按步骤设置后点击运行")
+
+    st.markdown("**① 数据源**")
+    uploaded = st.file_uploader(
+        "生产记录 CSV",
+        type=["csv"],
+        help="不选择时使用内置演示数据（2400 条）。",
+    )
     question = st.text_area(
         "质量问题",
         value=st.session_state.get("quality_question", DEFAULT_QUESTION),
         height=116,
         placeholder="请分析 2026-01-01 到 2026-01-31 A产线的不良率异常",
     )
-    run_analysis = st.button("运行分析", type="primary")
-    st.divider()
-    st.caption("数据模式：本地只读分析")
+    st.markdown("**② 解析后端**")
+    provider = st.selectbox(
+        "LLM 解析后端",
+        options=list(LLM_PROVIDERS),
+        format_func=lambda key: LLM_PROVIDERS[key],
+        index=0,
+        help="问题解析的后端：模拟器无需配置；Ollama 需本地安装；GLM 需设置 GLM_API_KEY。",
+    )
+    st.markdown("**③ 运行分析**")
+    run_analysis = st.button(
+        "运行分析",
+        type="primary",
+        icon=":material/play_arrow:",
+        disabled=not question.strip(),
+        help="填写问题后点击运行",
+    )
+    st.caption(":material/lock: 本地只读分析，数据不出本机")
 
 try:
     records = records_from_upload(uploaded) if uploaded else get_demo_records()
@@ -141,15 +201,38 @@ except Exception as error:
     st.error(f"无法读取数据：{error}")
     st.stop()
 
-if run_analysis or "quality_report" not in st.session_state:
+with st.sidebar:
+    if uploaded:
+        st.caption(f":material/check_circle: 已加载自定义数据 · {uploaded.name}")
+    else:
+        st.caption(f":material/database: 演示数据 · {len(records):,} 条")
+
+if run_analysis or "quality_report" not in st.session_state or provider != st.session_state.get(
+    "quality_provider", "mock"
+):
     st.session_state.quality_question = question
+    st.session_state.quality_provider = provider
     try:
-        st.session_state.quality_report = QualityAgent(records).answer(question)
+        st.session_state.quality_report = QualityAgent(records, llm_provider=provider).answer(question)
     except ValueError as error:
         st.error(f"分析参数无效：{error}")
         st.stop()
 
 report = st.session_state.quality_report
+st.session_state.quality_filters = format_filters(report["filters"])
+st.session_state.quality_run_at = datetime.now().strftime("%H:%M:%S")
+
+with st.sidebar:
+    st.divider()
+    st.markdown("**最近结果**")
+    if report["status"] == "success":
+        st.caption(f":material/check_circle: 分析完成 · {st.session_state.quality_run_at}")
+    elif report["status"] == "no_data":
+        st.caption(f":material/warning: 无匹配数据 · {st.session_state.quality_run_at}")
+    else:
+        st.caption(f":material/error: 分析失败 · {st.session_state.quality_run_at}")
+    st.markdown("**查询条件**")
+    st.text(st.session_state.quality_filters)
 
 st.title("制造质量分析台")
 st.caption("Manufacturing Quality Root Cause Agent · 可追溯的质量异常分析")
@@ -172,6 +255,14 @@ metric_columns[3].metric(
 )
 
 st.markdown(f'<div class="analysis-summary">{report["summary"]}</div>', unsafe_allow_html=True)
+
+st.caption(f":material/tune: 查询条件：{format_filters(report['filters'])}")
+
+with st.container(border=True):
+    st.markdown("**执行过程**")
+    for step in report.get("trace", []):
+        icon = TRACE_ICONS.get(step["tool"], "arrow_forward")
+        st.markdown(f":material/{icon}: `{step['tool']}` — {step['detail']}")
 
 trend_frame = build_trend(records, report["filters"])
 left, right = st.columns([1.45, 1], gap="large")
@@ -243,13 +334,19 @@ if top_factors:
     ]
     st.dataframe(pd.DataFrame(evidence_rows), hide_index=True, width="stretch")
 
-with st.expander("分析依据与原始记录"):
+st.subheader("知识库引用")
+if report.get("knowledge_refs"):
+    for reference in report["knowledge_refs"]:
+        with st.container(border=True):
+            st.markdown(f":material/menu_book: **{reference['doc']}** · **{reference['section']}**")
+            st.markdown(reference["snippet"])
+else:
+    st.caption(f":material/menu_book: {report.get('knowledge_summary', '未检索到相关文档。')}")
+
+with st.expander("数据证据与原始记录"):
     for item in top_factors:
         st.markdown(f"**{DIMENSION_LABELS.get(item['dimension'], item['dimension'])} · {item['value']}**")
         st.text(item["evidence"])
-    st.markdown(f"**知识库引用**：{report.get('knowledge_summary', '无')}")
-    for reference in report.get("knowledge_refs", []):
-        st.text(f"{reference['doc']}（{reference['section']}）：{reference['snippet']}")
     st.dataframe(pd.DataFrame(filter_records(records, **report["filters"])).head(100), hide_index=True)
 
 for limitation in report.get("limitations", []):

@@ -56,9 +56,14 @@ def _recommendation(dimension: str) -> str:
 class QualityAgent:
     """Coordinate deterministic quality tools and produce an evidence report."""
 
-    def __init__(self, records: Iterable[Record]):
+    def __init__(self, records: Iterable[Record], llm_provider: str | None = None):
         self.records = [dict(record) for record in records]
-        self.graph = build_graph()
+        if llm_provider is not None:
+            from agent.llm_parser import make_parse_fn
+
+            self.graph = build_graph(parse_fn=make_parse_fn(llm_provider))
+        else:
+            self.graph = build_graph()
 
     def answer(self, question: str, top_n: int = 3) -> dict[str, object]:
         state = self.graph.invoke(

@@ -50,7 +50,7 @@ def retrieve(
                 "doc": document["doc"],
                 "section": document["section"],
                 "score": round(rank_score, 4),
-                "snippet": str(document.get("text", ""))[:80],
+                "snippet": str(document.get("text", ""))[:240],
             }
         )
         if len(results) >= top_k:

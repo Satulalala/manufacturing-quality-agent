@@ -8,12 +8,12 @@ from evaluation.evaluate import load_cases, run_case, run_evaluation
 class EvaluationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.agent = QualityAgent(generate_records(2400, seed=42))
+        cls.agent = QualityAgent(generate_records(2400, seed=42), llm_provider="mock")
 
-    def test_cases_file_has_20_cases_with_required_fields(self):
+    def test_cases_file_has_22_cases_with_required_fields(self):
         cases = load_cases()
 
-        self.assertEqual(len(cases), 20)
+        self.assertEqual(len(cases), 22)
         for case in cases:
             self.assertIn("question", case)
             self.assertTrue(str(case["question"]).strip())
@@ -53,13 +53,13 @@ class EvaluationTests(unittest.TestCase):
         cases = load_cases()
         metrics = run_evaluation(self.agent, cases)
 
-        self.assertEqual(metrics["total"], 20)
-        self.assertEqual(metrics["completion_count"], 20)
+        self.assertEqual(metrics["total"], 22)
+        self.assertEqual(metrics["completion_count"], 22)
         self.assertAlmostEqual(metrics["completion_rate"], 1.0, places=6)
         self.assertGreater(metrics["avg_response_time_ms"], 0)
-        self.assertEqual(metrics["status_counts"]["success"], 18)
+        self.assertEqual(metrics["status_counts"]["success"], 20)
         self.assertEqual(metrics["status_counts"]["no_data"], 2)
-        self.assertEqual(len(metrics["details"]), 20)
+        self.assertEqual(len(metrics["details"]), 22)
 
     def test_run_evaluation_is_deterministic(self):
         cases = load_cases()

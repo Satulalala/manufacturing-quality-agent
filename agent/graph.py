@@ -22,10 +22,8 @@ def _trace(state: QualityState, tool: str, detail: str) -> None:
     state["trace"].append({"tool": tool, "detail": detail})
 
 
-def parse_node(state: QualityState) -> dict[str, object]:
-    from agent.workflow import parse_question
-
-    filters = parse_question(state["question"])
+def parse_node(state: QualityState, parse_fn) -> dict[str, object]:
+    filters = parse_fn(state["question"])
     _trace(state, "parse_question", str(filters))
     return {"filters": filters}
 
@@ -119,11 +117,23 @@ def has_data(state: QualityState) -> Literal["report", "analyze"]:
     return "report" if not state.get("filtered_records") else "analyze"
 
 
-def build_graph():
-    """Build and compile the quality workflow graph."""
+def build_graph(parse_fn=None):
+    """Build and compile the quality workflow graph.
+
+    ``parse_fn`` receives the raw question and returns filter dicts; it
+    defaults to the deterministic rule parser, and LLM-based parsers can be
+    injected (see ``agent.llm_parser``).
+    """
+
+    from agent.workflow import parse_question
+
+    resolve_parse = parse_fn or parse_question
+
+    def parse(state: QualityState) -> dict[str, object]:
+        return parse_node(state, resolve_parse)
 
     graph = StateGraph(QualityState)
-    graph.add_node("parse", parse_node)
+    graph.add_node("parse", parse)
     graph.add_node("query", query_node)
     graph.add_node("analyze", analyze_node)
     graph.add_node("knowledge", knowledge_node)

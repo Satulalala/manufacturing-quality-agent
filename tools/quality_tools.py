@@ -21,7 +21,7 @@ def filter_records(
     records: Iterable[Record],
     start_date: str | None = None,
     end_date: str | None = None,
-    production_line: str | None = None,
+    production_line: str | list[str] | None = None,
     vehicle_model: str | None = None,
 ) -> list[dict[str, object]]:
     """Filter records by safe, explicit dimensions."""
@@ -31,6 +31,12 @@ def filter_records(
     if start and end and start > end:
         raise ValueError("start_date cannot be after end_date")
 
+    lines = (
+        [line.strip().upper() for line in production_line]
+        if isinstance(production_line, list)
+        else ([production_line] if production_line else None)
+    )
+
     filtered: list[dict[str, object]] = []
     for record in records:
         timestamp = str(record.get("timestamp", ""))[:10]
@@ -38,7 +44,7 @@ def filter_records(
             continue
         if end and timestamp > end:
             continue
-        if production_line and str(record.get("production_line")) != production_line:
+        if lines and str(record.get("production_line")).strip().upper() not in lines:
             continue
         if vehicle_model and str(record.get("vehicle_model")) != vehicle_model:
             continue

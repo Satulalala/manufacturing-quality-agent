@@ -178,6 +178,53 @@ LangGraph Agent 的标准数据工具。CSV 仍是数据源，DuckDB 直接查�
 
 - 不用 embedding/向量库/LLM；不做文档新增后的增量更新。
 
+---
+
+# 切片七：可插拔 LLM 问题解析
+
+## 目标
+
+把规则版 `parse_question` 升级为"可插拔 LLM 解析后端"，解决 3 个已知失败
+案例（车型、中文日期、复合产线），同时保证：无 key、连不上、答得不规范时
+自动回退规则解析，评测基线不丢。
+
+## 三种后端（环境变量 `QUALITY_LLM_PROVIDER`，默认 mock）
+
+- `mock`：模拟器——本地规则解析（含中文日期、车型、复合产线），确定性，
+  用于开发与测试。
+- `ollama`：本地 Ollama（OpenAI 兼容端点 http://localhost:11434/v1，
+  模型 `QUALITY_LLM_MODEL` 默认 qwen2.5:7b）。
+- `glm`：智谱 GLM（OpenAI 兼容端点，密钥 `GLM_API_KEY`，
+  模型默认 glm-4-flash）。
+
+## 设计
+
+- 新增 `agent/llm_parser.py`：
+  - `make_parse_fn(provider)` 返回 `(question) -> filters` 的解析函数。
+  - `parse_with_llm(question, provider)`：调用后端 → 校验清洗 → 与规则结果
+    合并（LLM 漏掉的字段用规则补齐）→ 任何异常回退规则解析。
+- `tools/quality_tools.filter_records` 的 `production_line` 支持
+  `str | list[str]`，支持复合产线。
+- `agent/graph.py` 的 `build_graph(parse_fn=parse_question)` 注入解析函数；
+  `QualityAgent(records, llm_provider=None)` 默认 mock。
+
+## 评测扩展
+
+- `cases.json` 20 → 22 题：新增中文日期题、车型题。
+- `run_case` 新增 `expected_start_date` / `expected_vehicle_model` 断言。
+
+## 验收标准
+
+1. mock 模式解析：`1月1日到1月15日`、`ID.4 车型`、`A产线和B产线` 全部正确。
+2. LLM 输出坏 JSON / 类型错 / 网络失败 → 回退规则解析，结果可用。
+3. LLM 漏字段 → 规则字段补齐（合并）。
+4. 评测 22 题全绿；全量测试绿。
+
+## 不做
+
+- 不做对话记忆、不做 Function Calling 多轮，不接向量库。
+
+
 
 
 
