@@ -1,0 +1,97 @@
+{
+  "cases": [
+    {
+      "question": "请分析 2026-01-01 到 2026-01-15 A产线的不良率异常",
+      "expected_status": "success",
+      "expected_line": "A",
+      "expected_dimensions": ["workstation"]
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-31 A产线的不良率异常",
+      "expected_status": "success",
+      "expected_line": "A"
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-15 B产线的不良率异常",
+      "expected_status": "success",
+      "expected_line": "B"
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-31 B产线的不良率异常",
+      "expected_status": "success",
+      "expected_line": "B"
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-31 的不良率",
+      "expected_status": "success"
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-15 的不良率",
+      "expected_status": "success"
+    },
+    {
+      "question": "请分析 2026-01-10 到 2026-01-20 A产线的质量问题",
+      "expected_status": "success",
+      "expected_line": "A"
+    },
+    {
+      "question": "请分析 2026-01-20 到 2026-01-31 A产线的不良率异常",
+      "expected_status": "success",
+      "expected_line": "A"
+    },
+    {
+      "question": "请分析 2026-01-15 到 2026-01-31 B产线的不良率",
+      "expected_status": "success",
+      "expected_line": "B"
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-31 ID.4 车型的不良率异常",
+      "expected_status": "success"
+    },
+    {
+      "question": "2026-01-01 到 2026-01-31 A产线 W-07 工位为什么不良率高",
+      "expected_status": "success",
+      "expected_line": "A"
+    },
+    {
+      "question": "请分析 2027-01-01 到 2027-01-02 A产线的不良率",
+      "expected_status": "no_data"
+    },
+    {
+      "question": "请分析 2027-03-01 到 2027-03-31 的不良率",
+      "expected_status": "no_data"
+    },
+    {
+      "question": "A产线的不良率是多少",
+      "expected_status": "success",
+      "expected_line": "A"
+    },
+    {
+      "question": "Analyze the defect rate on line A",
+      "expected_status": "success",
+      "expected_line": "A"
+    },
+    {
+      "question": "请分析不良率",
+      "expected_status": "success"
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-31 A产线和B产线的不良率",
+      "expected_status": "success",
+      "expected_line": "A"
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-31 所有产线的质量情况",
+      "expected_status": "success"
+    },
+    {
+      "question": "今天的不良率怎么样",
+      "expected_status": "success"
+    },
+    {
+      "question": "请分析 2026-01-01 到 2026-01-31 A产线的不良率异常并给出排查建议",
+      "expected_status": "success",
+      "expected_line": "A"
+    }
+  ]
+}

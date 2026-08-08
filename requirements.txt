@@ -1,0 +1,11 @@
+# The MVP runs with the Python standard library.
+# Install these packages when adding the optional API, UI, and LLM layers.
+pandas>=2.2
+matplotlib>=3.10
+duckdb>=1.0
+scikit-learn>=1.5
+fastapi>=0.115
+uvicorn>=0.30
+streamlit>=1.38
+langgraph>=0.2
+pytest>=8.0
