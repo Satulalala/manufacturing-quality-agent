@@ -19,6 +19,17 @@ if str(_ROOT) not in sys.path:
 
 DEFAULT_CASES_PATH = Path(__file__).resolve().parent / "cases.json"
 
+VALID_SQL = [
+    "SELECT production_line, COUNT(*) AS n FROM production_records GROUP BY production_line",
+    "SELECT result, COUNT(*) AS n FROM production_records GROUP BY result",
+    "SELECT * FROM production_records LIMIT 3",
+]
+MALICIOUS_SQL = [
+    "DROP TABLE production_records",
+    "DELETE FROM production_records",
+    "SELECT * FROM read_csv_auto('secrets.csv')",
+]
+
 
 def load_cases(path: str | Path = DEFAULT_CASES_PATH) -> list[dict[str, object]]:
     """Load the fixed question set as a list of case dicts."""
@@ -29,6 +40,67 @@ def load_cases(path: str | Path = DEFAULT_CASES_PATH) -> list[dict[str, object]]
     if not isinstance(cases, list) or not cases:
         raise ValueError("cases.json must contain a non-empty 'cases' list")
     return [dict(case) for case in cases]
+
+
+def _factor_hit_rate(details: list[dict[str, object]]) -> float:
+    """Fraction of dimension-asserted cases whose expected factors were hit."""
+
+    checked = [item for item in details if item.get("expected_dimensions")]
+    if not checked:
+        return 1.0
+    hits = sum(1 for item in checked if "expected_dimensions" not in item.get("failed_checks", []))
+    return round(hits / len(checked), 6)
+
+
+def _citation_accuracy(reports: list[Mapping[str, object]], documents: list[dict[str, str]]) -> float:
+    """Fraction of knowledge refs whose (doc, section) really exists in the corpus."""
+
+    valid = {(document["doc"], document["section"]) for document in documents}
+    total = 0
+    valid_count = 0
+    for report in reports:
+        for reference in report.get("knowledge_refs") or []:
+            total += 1
+            if (reference["doc"], reference["section"]) in valid:
+                valid_count += 1
+    return round(valid_count / total, 6) if total else 1.0
+
+
+def _sql_success_rate(csv_path: str | Path | None) -> tuple[float, int]:
+    """Fraction of fixed legal queries succeeding plus malicious ones rejected."""
+
+    if csv_path is None:
+        return "skipped", 0
+    from tools.sql_tool import run_readonly_query
+
+    success = 0
+    for sql in VALID_SQL:
+        try:
+            run_readonly_query(csv_path, sql)
+            success += 1
+        except Exception:
+            pass
+    for sql in MALICIOUS_SQL:
+        try:
+            run_readonly_query(csv_path, sql)
+        except ValueError:
+            success += 1
+        except Exception:
+            pass
+    total = len(VALID_SQL) + len(MALICIOUS_SQL)
+    return round(success / total, 6), total
+
+
+def _review_stats(reports: list[Mapping[str, object]]) -> tuple[int, int]:
+    """(cases requiring review, cases passing review) under the simulated rule."""
+
+    required = sum(1 for report in reports if report.get("requires_human_review"))
+    passed = sum(
+        1
+        for report in reports
+        if report.get("requires_human_review") and report.get("top_factors")
+    )
+    return required, passed
 
 
 def run_case(agent, case: Mapping[str, object]) -> dict[str, object]:
@@ -76,6 +148,8 @@ def run_case(agent, case: Mapping[str, object]) -> dict[str, object]:
         "elapsed_ms": elapsed_ms,
         "failed_checks": failed_checks,
         "ok": status_ok and not failed_checks,
+        "expected_dimensions": bool(case.get("expected_dimensions")),
+        "report": report,
         "accuracy_checked": bool(
             case.get("expected_line")
             or case.get("expected_start_date")
@@ -86,7 +160,12 @@ def run_case(agent, case: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def run_evaluation(agent, cases: Iterable[Mapping[str, object]]) -> dict[str, object]:
+def run_evaluation(
+    agent,
+    cases: Iterable[Mapping[str, object]],
+    sql_csv: str | Path | None = None,
+    documents: list[dict[str, str]] | None = None,
+) -> dict[str, object]:
     """Run all cases and aggregate completion, accuracy, and timing metrics."""
 
     details = [run_case(agent, case) for case in cases]
@@ -100,6 +179,14 @@ def run_evaluation(agent, cases: Iterable[Mapping[str, object]]) -> dict[str, ob
     accuracy_pass = sum(1 for item in accuracy_items if item["ok"])
     total_ms = sum(float(item["elapsed_ms"]) for item in details)
 
+    reports = [item["report"] for item in details]
+    from rag.ingest import load_documents
+
+    resolved_documents = documents if documents is not None else load_documents()
+    citation_accuracy = _citation_accuracy(reports, resolved_documents)
+    required_reviews, passed_reviews = _review_stats(reports)
+    sql_rate, sql_checked = _sql_success_rate(sql_csv)
+
     return {
         "total": total,
         "completion_count": completion_count,
@@ -107,10 +194,23 @@ def run_evaluation(agent, cases: Iterable[Mapping[str, object]]) -> dict[str, ob
         "accuracy_checked": len(accuracy_items),
         "accuracy_pass": accuracy_pass,
         "accuracy_rate": round(accuracy_pass / len(accuracy_items), 6) if accuracy_items else 0.0,
+        "factor_hit_rate": _factor_hit_rate(details),
+        "citation_accuracy": citation_accuracy,
+        "sql_success_rate": sql_rate,
+        "sql_checked": sql_checked,
+        "review_required_count": required_reviews,
+        "review_pass_count": passed_reviews,
+        "review_pass_rate": round(passed_reviews / required_reviews, 6) if required_reviews else 1.0,
         "avg_response_time_ms": round(total_ms / total, 2) if total else 0.0,
         "status_counts": status_counts,
         "details": details,
     }
+
+
+def _rerun_reports(agent, cases: Iterable[Mapping[str, object]]) -> list[dict[str, object]]:
+    """Fallback for callers that did not attach reports to details."""
+
+    return [dict(agent.answer(str(case["question"]))) for case in cases]
 
 
 def main() -> None:
@@ -137,6 +237,7 @@ def main() -> None:
     metrics = run_evaluation(
         QualityAgent(records, llm_provider=args.provider),
         cases,
+        sql_csv=data_path,
     )
 
     print(f"问题总数：{metrics['total']}")
@@ -144,6 +245,17 @@ def main() -> None:
     print(
         f"数值准确率：{metrics['accuracy_pass']}/{metrics['accuracy_checked']} "
         f"= {metrics['accuracy_rate'] * 100:.1f}%"
+    )
+    print(f"候选因素命中率：{metrics['factor_hit_rate'] * 100:.1f}%")
+    print(f"引用准确率：{metrics['citation_accuracy'] * 100:.1f}%")
+    sql_text = metrics["sql_success_rate"]
+    if isinstance(sql_text, float):
+        print(f"SQL 成功率：{metrics['sql_checked']} 条检查 = {sql_text * 100:.1f}%")
+    else:
+        print(f"SQL 成功率：{sql_text}")
+    print(
+        f"人工审核通过率：{metrics['review_pass_count']}/{metrics['review_required_count']} "
+        f"= {metrics['review_pass_rate'] * 100:.1f}%"
     )
     print(f"平均响应时间：{metrics['avg_response_time_ms']} ms")
     print(f"状态分布：{metrics['status_counts']}")

@@ -335,6 +335,46 @@ SPC 控制线检测。纯函数 + 测试 + Agent 工具包装，风格与现有 
 
 - 不做控制图页面渲染（后续可选）、不做 p/np/u 图、不做 EWMA/CUSUM 图。
 
+---
+
+# 切片十一：评测指标补全
+
+## 目标
+
+把 md 第 9 节指标全部落地：在完成率/数值准确率/响应时间之外，新增
+候选因素命中率、引用准确率、SQL 成功率、人工审核通过率。
+
+## 指标定义
+
+- **候选因素命中率**：有 `expected_dimensions` 的 case 中，预期维度出现在
+  top_factors 的比例。
+- **引用准确率**：`knowledge_refs` 中 (doc, section) 真实存在于知识库文档的
+  比例；无引用不贡献分母。
+- **SQL 成功率**：固定 3 条合法 SELECT 全部成功 + 3 条恶意 SQL 全部被拒
+  （ValueError）的比例；无数据文件时标记 skipped。
+- **人工审核通过率**：`requires_human_review=True` 且 top_factors 非空的
+  case 占需审核 case 的比例（模拟审核规则）。
+
+## 范围
+
+- `evaluation/evaluate.py`：`run_evaluation(agent, cases, sql_csv=None,
+  documents=None)` 新增四个指标；`main()` 打印全部指标；固定
+  `VALID_SQL`/`MALICIOUS_SQL`。
+- `tests/test_evaluate.py`：断言新指标存在与合理值。
+
+## 验收标准
+
+1. demo 数据上：引用准确率 100%、SQL 成功率 100%、因素命中率 100%、
+   审核通过率 100%。
+2. sql_csv=None 时 SQL 指标为 skipped，不抛错。
+3. 全量测试绿。
+
+## 不做
+
+- 不做 Token 成本统计（本地模型不产生 token 费用）、不做人工实际点击
+  审核的集成（页面状态不进入评测）。
+
+
 
 
 

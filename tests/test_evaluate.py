@@ -1,14 +1,23 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from agent.workflow import QualityAgent
-from data.demo_data import generate_records
+from data.demo_data import generate_records, write_records
 from evaluation.evaluate import load_cases, run_case, run_evaluation
 
 
 class EvaluationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.agent = QualityAgent(generate_records(2400, seed=42), llm_provider="mock")
+        cls.records = generate_records(2400, seed=42)
+        cls.agent = QualityAgent(cls.records, llm_provider="mock")
+        cls._tmpdir = tempfile.TemporaryDirectory()
+        cls.csv_path = write_records(cls.records, Path(cls._tmpdir.name) / "records.csv")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmpdir.cleanup()
 
     def test_cases_file_has_22_cases_with_required_fields(self):
         cases = load_cases()
@@ -51,7 +60,7 @@ class EvaluationTests(unittest.TestCase):
 
     def test_run_evaluation_reports_metrics(self):
         cases = load_cases()
-        metrics = run_evaluation(self.agent, cases)
+        metrics = run_evaluation(self.agent, cases, sql_csv=self.csv_path)
 
         self.assertEqual(metrics["total"], 22)
         self.assertEqual(metrics["completion_count"], 22)
@@ -60,6 +69,18 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(metrics["status_counts"]["success"], 20)
         self.assertEqual(metrics["status_counts"]["no_data"], 2)
         self.assertEqual(len(metrics["details"]), 22)
+        self.assertAlmostEqual(metrics["factor_hit_rate"], 1.0, places=6)
+        self.assertAlmostEqual(metrics["citation_accuracy"], 1.0, places=6)
+        self.assertAlmostEqual(metrics["sql_success_rate"], 1.0, places=6)
+        self.assertAlmostEqual(metrics["review_pass_rate"], 1.0, places=6)
+        self.assertGreater(metrics["review_required_count"], 0)
+        self.assertEqual(metrics["sql_checked"], 6)
+
+    def test_sql_metric_is_skipped_without_csv(self):
+        metrics = run_evaluation(self.agent, load_cases())
+
+        self.assertEqual(metrics["sql_success_rate"], "skipped")
+        self.assertEqual(metrics["sql_checked"], 0)
 
     def test_run_evaluation_is_deterministic(self):
         cases = load_cases()
