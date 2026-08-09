@@ -4,8 +4,9 @@
 
 GitHub 仓库：https://github.com/Satulalala/manufacturing-quality-agent
 
-当前版本不依赖外部大模型 API，使用确定性的规则解析、质量分析工具、LangGraph
-编排和本地知识库检索完成完整演示。所有数字可复现、可测试、可追溯。
+当前版本采用"确定性分析内核 + 可选本地 LLM"架构：质量分析全部由确定性
+Python 函数完成（数字可复现、可测试、可追溯），问题解析和知识检索可选用
+本地 Ollama 模型（工业数据不出厂），无模型时自动回退规则解析。
 
 ## 功能一览
 
@@ -32,7 +33,7 @@ GitHub 仓库：https://github.com/Satulalala/manufacturing-quality-agent
   发现解析不对可以立即看到。
 - **知识库引用卡片**：命中时以卡片展示文档名、章节和原文摘要；未命中明确说明。
 - **只读 SQL 工具**：DuckDB 查询，表/列白名单，恶意 SQL 被拒绝。
-- **固定问题集评测**：20 道题自动评测，统计完成率、准确率和响应时间。
+- **固定问题集评测**：22 道题自动评测，统计完成率、准确率和响应时间。
 
 ## 快速运行
 
@@ -120,7 +121,7 @@ python -m unittest discover -s tests -v
 ```mermaid
 flowchart LR
     subgraph UI[展示层]
-        App[Streamlit 分析台 app.py]
+        App[Streamlit 分析台 app.py<br/>根因分析 + 质量工具箱]
         CLI[命令行 run_demo.py]
         Eval[评测 evaluation/evaluate.py]
     end
@@ -128,18 +129,24 @@ flowchart LR
         Graph[LangGraph 状态图<br/>agent/graph.py]
     end
     subgraph Tools[工具层]
-        P[parse_question 问题解析]
+        P[parse 问题解析<br/>mock/ollama/glm 可插拔]
         Q[filter_records 数据筛选]
-        A[质量分析函数<br/>analytics/]
-        K[retrieve_quality_documents<br/>知识库检索]
+        A[质量分析<br/>不良率/趋势/异常/Pareto/Cpk/SPC]
+        K[知识库检索<br/>向量 bge-m3 + bigram 回退]
         S[run_readonly_query<br/>DuckDB 只读 SQL]
+        R[retry 重试 / run_logger 日志]
     end
     subgraph Data[数据与知识层]
         CSV[(data/demo_records.csv<br/>2400 条模拟记录)]
         Docs[(docs/ 质量文档<br/>标准/缺陷手册/案例)]
     end
+    subgraph Local[本地模型层]
+        Ollama[(Ollama<br/>qwen2.5:7b + bge-m3)]
+    end
     UI --> Graph
     Graph --> P & Q & A & K
+    P --> Ollama
+    K --> Ollama
     Q --> CSV
     S --> CSV
     K --> Docs
@@ -221,25 +228,25 @@ run_demo.py                    命令行入口
 evaluation/cases.json          固定问题集（22 题）
 evaluation/evaluate.py         评测：任务完成率/数值准确率/响应时间
 tests/                         单元测试（91 个）
-tasks/plan.md                  切片二至六的开发规格与验收记录
+tasks/plan.md                  切片二至十的开发规格与验收记录
 ```
 
 ## 简历项目描述
 
 > 面向新能源汽车制造质量场景，基于 LangGraph 设计制造质量根因分析 Agent，
-> 集成 DuckDB SQL 查询、异常检测、质量知识库 RAG 和结构化报告生成工具；支持
-> 按产线、工位、班次和供应商分析不良率异常，输出候选影响因素、数据证据及
-> 相关质量案例，并通过固定问题集评估任务完成率和引用准确率。
+> 集成 DuckDB 只读 SQL 查询、异常检测、Pareto/Cpk/SPC 质量分析工具、语义
+> 向量检索知识库（本地 bge-m3，支持同义表达召回）和结构化报告生成；问题
+> 解析采用可插拔 LLM 后端（本地 Ollama qwen2.5:7b，工业数据不出厂，失败
+> 自动回退规则），含工具失败重试、人工审核标记与结构化调用日志；通过 22
+> 题固定问题集评估任务完成率与数值准确率（100%）。
 
 ## 下一步扩展
 
-1. 接入真实 LLM（Ollama/GLM 后端已就绪，配置环境变量即可启用），
-   支持 Function Calling 和对话记忆。
-2. 为 Agent 增加人工确认节点、工具失败重试和结构化日志。
-3. 使用 DuckDB/PostgreSQL 替代直接加载 CSV 到内存。
-4. 知识库升级为 embedding 向量检索，并接入大模型生成自然语言结论。
-5. 用 AI4I 等真实数据集替换模拟数据，做进阶演示。
-6. 增加 Docker 部署和可观测性（调用链、耗时、成本统计）。
+1. 支持 Function Calling 与对话记忆，让 LLM 直接驱动工具调用。
+2. 使用 DuckDB/PostgreSQL 替代直接加载 CSV 到内存。
+3. 用 AI4I 等真实数据集替换模拟数据，做进阶演示。
+4. 增加 Docker 部署和可观测性（调用链、耗时、成本统计）。
+5. 评测补全引用准确率、SQL 成功率、人工审核通过率指标。
 
 ## 重要限制
 
