@@ -299,6 +299,43 @@ LangGraph Agent 的标准数据工具。CSV 仍是数据源，DuckDB 直接查�
 - 不做向量库（FAISS/Chroma/pgvector），索引存 JSON 足够（30 块 × 768 维）。
 - 不做增量更新与 embedding 缓存失效。
 
+---
+
+# 切片十：Pareto、Cpk、SPC 质量分析函数
+
+## 目标
+
+补齐 md 阶段二业务概念：缺陷类型 Pareto 分析、工艺能力指数 Cpk、
+SPC 控制线检测。纯函数 + 测试 + Agent 工具包装，风格与现有 analytics 一致。
+
+## 范围
+
+- 新增 `analytics/pareto.py`：
+  `pareto_analysis(records, defect_field="defect_type")` —— 缺陷类型按缺陷数
+  降序，含占比与累计占比；无缺陷时 `status="no_defects"`。
+- 新增 `analytics/process_capability.py`：
+  `calculate_cpk(values, usl, lsl, min_samples=5)` —— 样本均值/标准差、
+  Cp、Cpk（min(Cpu, Cpl)）；分级：>=1.33 capable / >=1.0 marginal /
+  <1.0 not_capable；std=0 时 `status="constant"`；样本不足 `insufficient`。
+- 新增 `analytics/spc_analysis.py`：
+  `spc_control_limits(values, min_samples=10)` —— 均值 ± 3 样本标准差控制线，
+  检出超限点（含上/下侧）；样本不足 `insufficient`。
+- 新增 `tools/capability_tool.py`：包装三个函数并附中文排查建议。
+- 新增三个测试文件；更新 README。
+
+## 验收标准
+
+1. Pareto：排序、占比、累计占比正确；无缺陷时诚实报告。
+2. Cpk：对称/非对称规格值可手工验证；四档状态（capable/marginal/
+   not_capable/insufficient/constant）覆盖。
+3. SPC：正常序列无超限；注入离群点被检出（含上下侧）。
+4. 全量测试绿。
+
+## 不做
+
+- 不做控制图页面渲染（后续可选）、不做 p/np/u 图、不做 EWMA/CUSUM 图。
+
+
 
 
 

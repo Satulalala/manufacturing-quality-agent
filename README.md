@@ -15,6 +15,8 @@ GitHub 仓库：https://github.com/Satulalala/manufacturing-quality-agent
 - **不良率分析**：计算指定范围的总不良率、缺陷数量、样本量。
 - **候选因素排名**：按工位、班次、供应商、批次分组对比，排出最值得优先排查的
   前 3 个因素（带不良率、样本量、数据证据和人工确认建议）。
+- **质量分析工具箱**：Pareto 缺陷类型分析（占比/累计占比）、Cpk 工艺能力
+  指数（capable/marginal/not_capable 分级）、SPC 控制线检测（超限点定位）。
 - **趋势跳变检测**：前后窗口对比，定位不良率突变发生的日期。
 - **参数异常检测**：Isolation Forest 检出温度/压力/扭矩的离群记录（结果确定）。
 - **知识库引用**：语义向量检索（本地 bge-m3 embedding），问"螺丝拧不紧"也能
@@ -110,6 +112,9 @@ set GLM_API_KEY=你的key
 python -m unittest discover -s tests -v
 ```
 
+> 部分用例（向量检索）调用本地 Ollama，全量约 6 分钟；不启动 Ollama 时
+> 这些用例自动回退到关键词检索路径，测试仍可通过。
+
 ## 系统架构
 
 ```mermaid
@@ -191,6 +196,9 @@ flowchart TD
 analytics/quality_analysis.py  纯 Python 质量分析函数
 analytics/trend_analysis.py    不良率趋势跳变检测（前后窗口对比）
 analytics/anomaly_detection.py Isolation Forest 工艺参数异常检测
+analytics/pareto.py            缺陷类型 Pareto 分析（占比/累计占比）
+analytics/process_capability.py Cp/Cpk 工艺能力指数
+analytics/spc_analysis.py      SPC 控制线与超限点检测
 data/demo_data.py              可复现模拟数据和 CSV 读写
 docs/                          质量知识库（标准/缺陷手册/维修案例）与项目文档
 rag/ingest.py                  知识文档切分与索引（显式文件名白名单）
@@ -200,6 +208,7 @@ rag/vector_retriever.py        语义向量检索（余弦相似度）+ 向量�
 tools/quality_tools.py         Agent 可调用的数据筛选工具
 tools/sql_tool.py              DuckDB 只读 SQL 查询工具（表/列白名单）
 tools/anomaly_tool.py          趋势/异常检测的 Agent 调用包装层
+tools/capability_tool.py       Pareto/Cpk/SPC 的 Agent 调用包装层
 tools/knowledge_tool.py        知识库检索工具（无命中时明确说明）
 agent/workflow.py              Agent 公共入口和报告渲染（兼容层）
 agent/graph.py                 LangGraph 节点图（parse→query→analyze→knowledge→report）
@@ -211,7 +220,7 @@ app.py                         Streamlit 可视化分析台
 run_demo.py                    命令行入口
 evaluation/cases.json          固定问题集（22 题）
 evaluation/evaluate.py         评测：任务完成率/数值准确率/响应时间
-tests/                         单元测试（68 个）
+tests/                         单元测试（91 个）
 tasks/plan.md                  切片二至六的开发规格与验收记录
 ```
 

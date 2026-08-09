@@ -32,7 +32,9 @@ def embed_texts(
     if model:
         resolved_model = model
 
-    payload = json.dumps({"model": resolved_model, "input": list(texts)}).encode("utf-8")
+    payload = json.dumps(
+        {"model": resolved_model, "input": list(texts), "keep_alive": -1}
+    ).encode("utf-8")
     request = urllib.request.Request(
         f"{resolved_url}/api/embed",
         data=payload,
