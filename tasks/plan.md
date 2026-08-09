@@ -263,6 +263,43 @@ LangGraph Agent 的标准数据工具。CSV 仍是数据源，DuckDB 直接查�
 - 不做 LangGraph interrupt 真暂停节点（页面按钮 + 标记已够 MVP）。
 - 不做日志轮转与审计查询界面。
 
+---
+
+# 切片九：RAG 向量检索升级
+
+## 目标
+
+把知识库从"关键词匹配（bigram）"升级为"语义向量检索"：问"螺丝拧不紧"
+也能命中"扭矩偏低"案例。本地 Ollama embedding（nomic-embed-text），
+数据不出厂；embedding 不可用时自动回退 bigram，评测基线不丢。
+
+## 范围
+
+- `ollama pull nomic-embed-text`（约 270MB，本地推理）。
+- 新增 `rag/embedding.py`：`embed_texts(texts)` 调 Ollama `/api/embed`，
+  `OllamaUnavailable` 异常。
+- 新增 `rag/vector_retriever.py`：
+  - `build_vector_index()`：文档切块 → 向量 → `rag/vector_index.json`
+    （`{chunks: [...], vectors: [[...]]}`）。
+  - `retrieve_vector(query, top_k=3, min_score=0.25, embed_fn=None)`：
+    余弦相似度排序，输出与 bigram 同构（doc/section/score/snippet）。
+- `tools/knowledge_tool.py`：向量优先，`OllamaUnavailable`/异常 → bigram 回退。
+- 新增 `tests/test_vector_retriever.py`：确定性 fake embedder 测排序/过滤/
+  top_k/回退；真实 Ollama 语义用例用 `skipUnless` 跳过。
+
+## 验收标准
+
+1. fake embedder：query 与目标块相似 → 该块第一；min_score 过滤生效。
+2. Ollama 不可用时 knowledge_tool 回退 bigram，行为不变。
+3. 真实 Ollama 下"螺丝拧不紧"命中扭矩相关章节（skipUnless 保护）。
+4. 全量测试绿，22 题评测 100% 保持。
+
+## 不做
+
+- 不做向量库（FAISS/Chroma/pgvector），索引存 JSON 足够（30 块 × 768 维）。
+- 不做增量更新与 embedding 缓存失效。
+
+
 
 
 

@@ -8,6 +8,7 @@ __pycache__/
 .env
 data/demo_records.csv
 rag/index.json
+rag/vector_index.json
 logs/
 .agents/
 .claude/

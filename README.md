@@ -15,8 +15,8 @@
   前 3 个因素（带不良率、样本量、数据证据和人工确认建议）。
 - **趋势跳变检测**：前后窗口对比，定位不良率突变发生的日期。
 - **参数异常检测**：Isolation Forest 检出温度/压力/扭矩的离群记录（结果确定）。
-- **知识库引用**：检索质量标准、缺陷代码手册和维修案例，回答附文档名与章节；
-  检索不到时明确说明，不编造来源。
+- **知识库引用**：语义向量检索（本地 bge-m3 embedding），问"螺丝拧不紧"也能
+  命中"扭矩偏低"案例；Ollama 不可用时自动回退关键词检索；无命中明确说明。
 - **调用链追踪**：页面展示完整执行过程（解析 → 筛选 → 分析 → 知识库 → 报告），
   每次工具调用附记录，全流程可审计。
 - **结构化运行日志**：每次分析写入 `logs/run_*.json`（问题、筛选条件、每步
@@ -161,7 +161,7 @@ flowchart TD
 |---|---|---|
 | mock（规则模拟器） | 任务完成率 | 22/22 = 100% |
 | mock | 数值准确率 | 14/14 = 100% |
-| mock | 平均响应时间 | 约 6 ms |
+| mock | 平均响应时间 | 约 2.0 s（含向量检索） |
 | qwen2.5:7b（Ollama 本地） | 任务完成率 | 22/22 = 100% |
 | qwen2.5:7b | 数值准确率 | 14/14 = 100% |
 | qwen2.5:7b | 平均响应时间 | 约 7 s（GPU 推理） |
@@ -192,7 +192,9 @@ analytics/anomaly_detection.py Isolation Forest 工艺参数异常检测
 data/demo_data.py              可复现模拟数据和 CSV 读写
 docs/                          质量知识库（标准/缺陷手册/维修案例）与项目文档
 rag/ingest.py                  知识文档切分与索引（显式文件名白名单）
-rag/retriever.py               字符 bigram 确定性检索
+rag/retriever.py               字符 bigram 确定性检索（回退用）
+rag/embedding.py               本地 Ollama embedding 客户端（bge-m3）
+rag/vector_retriever.py        语义向量检索（余弦相似度）+ 向量索引
 tools/quality_tools.py         Agent 可调用的数据筛选工具
 tools/sql_tool.py              DuckDB 只读 SQL 查询工具（表/列白名单）
 tools/anomaly_tool.py          趋势/异常检测的 Agent 调用包装层
