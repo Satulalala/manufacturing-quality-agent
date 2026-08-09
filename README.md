@@ -76,7 +76,11 @@ python run_demo.py "请分析 2026-01-01 到 2026-01-15 B产线的不良率异�
 ### 评测
 
 ```powershell
+# mock（规则模拟器，默认，毫秒级）
 python evaluation/evaluate.py
+
+# 真实 LLM（Ollama 本地模型，约 7 秒/题）
+python evaluation/evaluate.py --provider ollama
 ```
 
 ### 切换 LLM 解析后端
@@ -151,15 +155,18 @@ flowchart TD
     G --> OUT[结论 + 数据证据 + 样本量<br/>知识库引用 + 调用链 + 风险提示]
 ```
 
-## 评测结果（2026-08-08，demo_records.csv，2400 条，mock 解析后端）
+## 评测结果（2026-08-09，demo_records.csv，2400 条）
 
-| 指标 | 结果 |
-|---|---|
-| 问题总数 | 22 |
-| 任务完成率 | 22/22 = 100% |
-| 数值准确率 | 14/14 = 100% |
-| 平均响应时间 | 约 5.8 ms |
-| 状态分布 | success 20，no_data 2 |
+| 后端 | 指标 | 结果 |
+|---|---|---|
+| mock（规则模拟器） | 任务完成率 | 22/22 = 100% |
+| mock | 数值准确率 | 14/14 = 100% |
+| mock | 平均响应时间 | 约 6 ms |
+| qwen2.5:7b（Ollama 本地） | 任务完成率 | 22/22 = 100% |
+| qwen2.5:7b | 数值准确率 | 14/14 = 100% |
+| qwen2.5:7b | 平均响应时间 | 约 7 s（GPU 推理） |
+
+状态分布（两种后端一致）：success 20，no_data 2。
 
 ## 成功与失败案例
 

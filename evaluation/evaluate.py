@@ -123,6 +123,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="运行固定问题集评测")
     parser.add_argument("--data", default="data/demo_records.csv", help="CSV 数据路径")
+    parser.add_argument("--provider", default="mock", help="LLM 解析后端：mock/ollama/glm")
     args = parser.parse_args()
 
     data_path = Path(args.data)
@@ -134,7 +135,7 @@ def main() -> None:
 
     cases = load_cases()
     metrics = run_evaluation(
-        QualityAgent(records, llm_provider="mock"),
+        QualityAgent(records, llm_provider=args.provider),
         cases,
     )
 
