@@ -2,6 +2,8 @@
 
 面向新能源汽车制造场景的制造质量根因分析 Agent MVP。
 
+GitHub 仓库：https://github.com/Satulalala/manufacturing-quality-agent
+
 当前版本不依赖外部大模型 API，使用确定性的规则解析、质量分析工具、LangGraph
 编排和本地知识库检索完成完整演示。所有数字可复现、可测试、可追溯。
 
