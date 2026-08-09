@@ -370,3 +370,75 @@ with st.expander("数据证据与原始记录"):
 
 for limitation in report.get("limitations", []):
     st.markdown(f'<div class="data-note">{limitation}</div>', unsafe_allow_html=True)
+
+filtered_records = filter_records(records, **report["filters"])
+st.subheader("质量分析工具箱")
+tool_tabs = st.tabs(["Pareto 缺陷分析", "工艺能力 Cpk", "SPC 控制线"])
+
+with tool_tabs[0]:
+    from analytics.pareto import pareto_analysis
+    from tools.capability_tool import analyze_pareto
+
+    pareto = analyze_pareto(filtered_records)
+    if pareto["status"] != "success":
+        st.info(pareto["evidence"])
+    else:
+        pframe = pd.DataFrame(pareto["items"])
+        figure, axis = plt.subplots(figsize=(8.4, 3.4), dpi=120)
+        bars = axis.bar(pframe["defect_type"], pframe["count"], color="#176b52", width=0.5)
+        axis.set_ylabel("缺陷数")
+        axis.grid(axis="y", color="#d8ded9", linewidth=0.7)
+        axis.set_axisbelow(True)
+        axis.spines[["top", "right"]].set_visible(False)
+        axis.spines[["left", "bottom"]].set_color("#aeb8b1")
+        axis.bar_label(bars, color="#17201c", fontsize=9)
+        axis2 = axis.twinx()
+        axis2.plot(pframe["defect_type"], pframe["cumulative_percent"], color="#b63b35", marker="o", markersize=4)
+        axis2.set_ylabel("累计占比 (%)")
+        axis2.spines["top"].set_visible(False)
+        axis2.spines[["left", "right"]].set_color("#aeb8b1")
+        figure.tight_layout()
+        st.pyplot(figure, width="stretch")
+        plt.close(figure)
+        st.caption(pareto["recommendation"])
+
+with tool_tabs[1]:
+    from tools.capability_tool import analyze_process_capability
+
+    capability_columns = st.columns(3)
+    for column, field in zip(capability_columns, ("temperature", "pressure", "torque")):
+        with column:
+            result = analyze_process_capability(filtered_records, field=field)
+            status_labels = {
+                "capable": "合格",
+                "marginal": "临界",
+                "not_capable": "不足",
+                "constant": "无波动",
+                "insufficient": "样本不足",
+                "missing_specs": "缺规格",
+            }
+            cpk = result.get("cpk")
+            column.metric(
+                f"{field} · Cpk",
+                f"{cpk:.3f}" if cpk is not None else "—",
+                status_labels.get(result["status"], result["status"]),
+            )
+            column.caption(result["evidence"])
+
+with tool_tabs[2]:
+    from tools.capability_tool import analyze_spc
+
+    spc_columns = st.columns(3)
+    for column, field in zip(spc_columns, ("temperature", "pressure", "torque")):
+        with column:
+            result = analyze_spc(filtered_records, field=field)
+            limits = result.get("ucl")
+            if limits is not None:
+                column.metric(
+                    f"{field} · 控制线",
+                    f"{result['lcl']:.2f} ~ {result['ucl']:.2f}",
+                    f"超限 {len(result['out_of_control'])} 点",
+                )
+            else:
+                column.metric(f"{field} · 控制线", "—")
+            column.caption(result["evidence"])
