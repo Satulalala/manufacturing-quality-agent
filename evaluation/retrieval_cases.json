@@ -1,0 +1,39 @@
+{
+  "cases": [
+    {
+      "question": "torque_low 扭矩偏低 规格下限 40 N·m",
+      "expected_doc": "defect_code_manual.md",
+      "expected_section": "torque_low 扭矩偏低"
+    },
+    {
+      "question": "W-07 工位扭矩枪校准漂移后怎么处理",
+      "expected_doc": "maintenance_cases.md",
+      "expected_section": "案例一：W-07 扭矩偏低批量不良"
+    },
+    {
+      "question": "气源压力波动 夜班交接稳压器没有复位",
+      "expected_doc": "maintenance_cases.md",
+      "expected_section": "案例二：夜班压力偏高"
+    },
+    {
+      "question": "temperature_drift 冷却系统工艺温度持续上升",
+      "expected_doc": "defect_code_manual.md",
+      "expected_section": "temperature_drift 温度漂移"
+    },
+    {
+      "question": "S-03 供应商批次热处理工艺变更导致升温过快",
+      "expected_doc": "maintenance_cases.md",
+      "expected_section": "案例三：S-03 供应商批次温度漂移"
+    },
+    {
+      "question": "SPC 连续7点上升 均值3标准差控制线触发调查",
+      "expected_doc": "quality_standard.md",
+      "expected_section": "SPC 控制"
+    },
+    {
+      "question": "样本量少于20条 不良率统计只能给候选因素",
+      "expected_doc": "quality_standard.md",
+      "expected_section": "不良率定义"
+    }
+  ]
+}

@@ -1,62 +1,60 @@
 import unittest
 
-from agent.graph import build_graph
 from agent.workflow import QualityAgent
 from data.demo_data import generate_records
-
-PRESET_QUESTIONS = [
-    "请分析 2026-01-01 到 2026-01-15 A产线的不良率异常",
-    "请分析 2026-01-01 到 2026-01-31 的不良率",
-    "请分析 2026-01-10 到 2026-01-20 B产线的质量问题",
-    "2026-01-01 到 2026-01-31 A产线 W-07 工位为什么不良率高",
-    "请分析 2026-03-01 到 2026-03-31 A产线的不良率",
-]
+from tests.agent_test_utils import scripted_quality_decision
 
 
-class LangGraphWorkflowTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.records = generate_records(2400, seed=42)
-        cls.agent = QualityAgent(cls.records)
-
-    def test_preset_questions_all_complete(self):
-        for question in PRESET_QUESTIONS:
-            with self.subTest(question=question):
-                report = self.agent.answer(question)
-                self.assertIn(report["status"], {"success", "no_data"})
-                self.assertEqual(report["question"], question)
-
-    def test_no_data_question_returns_no_data_status(self):
-        report = self.agent.answer(PRESET_QUESTIONS[-1])
-        self.assertEqual(report["status"], "no_data")
-        self.assertEqual(report["top_factors"], [])
-
-    def test_trace_records_tool_call_order(self):
-        report = self.agent.answer(PRESET_QUESTIONS[0])
-
-        self.assertIn("trace", report)
-        self.assertEqual(
-            [step["tool"] for step in report["trace"]],
-            [
-                "parse_question",
-                "filter_records",
-                "rank_candidate_causes",
-                "retrieve_quality_documents",
-                "generate_report",
-            ],
+class ControlledLoopWorkflowTests(unittest.TestCase):
+    def test_analysis_uses_loop_even_when_legacy_flag_is_false(self):
+        records = generate_records(2400, seed=42)
+        parsed = {
+            "task": "quality_analysis",
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+            "date_filter_requested": True,
+            "date_scope": "range",
+            "production_line": ["A"],
+            "vehicle_model": "",
+            "workstation": [],
+            "shift": [],
+            "supplier_id": [],
+            "batch_id": [],
+            "defect_type": [],
+            "clarification_needed": False,
+            "interpretation": "一月 A 产线质量",
+        }
+        agent = QualityAgent(
+            records,
+            parse_fn=lambda _question: parsed,
+            decision_fn=scripted_quality_decision,
+            use_decision_loop=False,
         )
 
-    def test_graph_builds_and_runs_directly(self):
-        app = build_graph()
-        state = app.invoke({"records": self.records, "question": PRESET_QUESTIONS[0], "trace": []})
-        self.assertEqual(state["report"]["status"], "success")
-        self.assertTrue(state["trace"])
+        report = agent.answer("分析 2026 年 1 月 A 产线质量")
 
-    def test_answer_contract_is_unchanged(self):
-        report = self.agent.answer(PRESET_QUESTIONS[0])
-        for key in ("status", "question", "filters", "baseline", "top_factors", "summary"):
-            self.assertIn(key, report)
+        self.assertEqual(report["status"], "success")
+        self.assertEqual(report["decision_loop"]["status"], "success")
+        self.assertEqual(report["decision_loop"]["tool_execution_count"], 1)
+        self.assertGreater(report["baseline"]["total_count"], 0)
+        self.assertEqual(report["filters"]["production_line"], ["A"])
         self.assertIn("limitations", report)
+
+    def test_no_data_stops_with_an_explicit_status(self):
+        records = generate_records(2400, seed=42)
+        parsed = {
+            "task": "quality_analysis", "start_date": "2027-01-01", "end_date": "2027-01-02",
+            "date_filter_requested": True, "date_scope": "range", "production_line": ["A"],
+            "vehicle_model": "", "workstation": [], "shift": [], "supplier_id": [],
+            "batch_id": [], "defect_type": [], "clarification_needed": False,
+            "interpretation": "无数据范围",
+        }
+        agent = QualityAgent(records, parse_fn=lambda _question: parsed, decision_fn=scripted_quality_decision)
+
+        report = agent.answer("分析 2027 年 1 月 A 产线质量")
+
+        self.assertEqual(report["status"], "no_data")
+        self.assertEqual(report["top_factors"], [])
 
 
 if __name__ == "__main__":

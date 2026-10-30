@@ -1,0 +1,6 @@
+# Optional model adapters and tracing; deterministic analysis works without these.
+-r requirements.txt
+langchain>=1.4,<2
+langchain-openai>=1,<2
+langchain-ollama>=1,<2
+langsmith>=0.4,<1

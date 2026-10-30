@@ -1,7 +1,13 @@
 import unittest
 
-from agent.workflow import QualityAgent, parse_question
+from agent.workflow import QualityAgent as _QualityAgent, parse_question
 from data.demo_data import generate_records
+from tests.agent_test_utils import scripted_quality_decision
+
+
+def QualityAgent(*args, **kwargs):
+    kwargs.setdefault("decision_fn", scripted_quality_decision)
+    return _QualityAgent(*args, **kwargs)
 
 
 class AgentWorkflowTests(unittest.TestCase):

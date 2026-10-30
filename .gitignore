@@ -6,10 +6,11 @@ __pycache__/
 .ruff_cache/
 .cache/
 .env
-data/demo_records.csv
 rag/index.json
 rag/vector_index.json
 logs/
 .agents/
 .claude/
 *.log
+frontend/node_modules/
+frontend/dist/

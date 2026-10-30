@@ -31,7 +31,7 @@ Agent 需要完成：
 - LLM：可配置的云端模型 API
 - RAG：LlamaIndex 或 LangChain + FAISS/Chroma
 - 后端：FastAPI
-- 演示界面：Streamlit
+- 演示界面：React + TypeScript + Vite；本地接口：FastAPI
 - 测试：pytest
 - 部署：Docker
 - 版本管理：Git + GitHub
@@ -200,7 +200,9 @@ manufacturing-quality-agent/
 ├── tests/
 │   ├── test_analytics.py
 │   └── test_tools.py
-├── app.py
+├── frontend/               # React + TypeScript 工作台
+├── server/                 # FastAPI 本地接口
+├── start_app.bat           # Windows 启动入口
 ├── requirements.txt
 ├── Dockerfile
 └── README.md
@@ -408,7 +410,7 @@ Agent 解析时间、车型和产线
 3. 不良率和分组异常分析。
 4. LangGraph 单 Agent 工作流。
 5. 3 个质量文档的 RAG 检索。
-6. Streamlit 演示页面。
+6. React 工作台与 FastAPI 本地接口。
 7. 20 个问题的评测集。
 
 完成这个版本后，再考虑 PostgreSQL、Qdrant、Docker、监控和多 Agent。核心目标是先做出一个“可运行、可解释、可评测”的业务闭环。

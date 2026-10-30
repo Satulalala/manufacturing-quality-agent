@@ -1,0 +1,3 @@
+# The legacy graph tests and checkpoint migration tests need the optional compatibility stack.
+-r requirements-migrate.txt
+pytest>=8.0

@@ -1,7 +1,8 @@
 # 成功与失败案例
 
-所有案例基于 `data/demo_records.csv`（2400 条可复现模拟数据，seed=42），
-通过 `python run_demo.py` / `python -X utf8 -c "..."` 实测记录。
+归档说明：以下案例和具体数字基于已移除的旧版 `data/demo_records.csv`（2400 条模拟数据）。
+它们保留为项目演进记录，不代表当前 `data/datasets/` 多年度数据集的分析结果；
+当前数据的演示分析请使用 `python run_demo.py`，评测前需基于所选年度数据更新评测预期。
 
 ## 成功案例
 

@@ -219,23 +219,21 @@ def main() -> None:
     import argparse
 
     from agent.workflow import QualityAgent
-    from data.demo_data import generate_records, load_records, write_records
+    from data.demo_data import load_records
 
     parser = argparse.ArgumentParser(description="运行固定问题集评测")
-    parser.add_argument("--data", default="data/demo_records.csv", help="CSV 数据路径")
-    parser.add_argument("--provider", default="mock", help="LLM 解析后端：mock/ollama/glm")
+    parser.add_argument("--data", default="data/datasets/quality_records_2026.csv", help="CSV 数据路径")
+    parser.add_argument("--provider", choices=["ollama"], default="ollama", help="问题解析模型：本地 Ollama")
     args = parser.parse_args()
 
     data_path = Path(args.data)
-    if data_path.exists():
-        records = load_records(data_path)
-    else:
-        records = generate_records()
-        write_records(records, data_path)
+    if not data_path.is_file():
+        raise SystemExit(f"数据文件不存在：{data_path.resolve()}。请从 data/datasets 中选择年度数据集。")
+    records = load_records(data_path)
 
     cases = load_cases()
     metrics = run_evaluation(
-        QualityAgent(records, llm_provider=args.provider),
+        QualityAgent(records, llm_provider=args.provider, csv_path=data_path),
         cases,
         sql_csv=data_path,
     )

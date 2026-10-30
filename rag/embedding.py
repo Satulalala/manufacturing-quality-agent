@@ -17,6 +17,19 @@ class OllamaUnavailable(Exception):
     """Raised when the local Ollama server cannot be reached."""
 
 
+def embedding_identity(
+    base_url: str | None = None,
+    model: str | None = None,
+) -> dict[str, str]:
+    """Return the configured embedding provider identity for cache keys."""
+
+    return {
+        "provider": "ollama",
+        "base_url": base_url or os.environ.get("OLLAMA_BASE_URL", DEFAULT_BASE_URL),
+        "model": model or os.environ.get("OLLAMA_EMBED_MODEL", DEFAULT_MODEL),
+    }
+
+
 def embed_texts(
     texts: Iterable[str],
     base_url: str | None = None,
@@ -25,12 +38,9 @@ def embed_texts(
 ) -> list[list[float]]:
     """Embed a list of texts into vectors via the local Ollama server."""
 
-    resolved_url = os.environ.get("OLLAMA_BASE_URL", DEFAULT_BASE_URL)
-    resolved_model = os.environ.get("OLLAMA_EMBED_MODEL", DEFAULT_MODEL)
-    if base_url:
-        resolved_url = base_url
-    if model:
-        resolved_model = model
+    identity = embedding_identity(base_url=base_url, model=model)
+    resolved_url = identity["base_url"]
+    resolved_model = identity["model"]
 
     payload = json.dumps(
         {"model": resolved_model, "input": list(texts), "keep_alive": -1}

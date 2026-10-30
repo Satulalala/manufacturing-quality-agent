@@ -1,10 +1,13 @@
-"""Generate deterministic, synthetic production-quality records.
+"""Legacy compact synthetic fixture helpers used by unit tests.
 
-The injected patterns make the demo useful for testing root-cause ranking while
-keeping the data clearly synthetic and safe to publish.
+The workbench's default datasets are the versioned annual CSVs under
+``data/datasets``; this module remains for tests that need a small in-memory
+fixture and for the shared CSV reader.
 """
 
+
 from __future__ import annotations
+
 
 import csv
 import random

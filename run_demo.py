@@ -6,10 +6,10 @@ import argparse
 from pathlib import Path
 
 from agent.workflow import QualityAgent, render_text_report
-from data.demo_data import generate_records, load_records, write_records
+from data.demo_data import load_records
 
 
-DEFAULT_DATA_PATH = Path("data/demo_records.csv")
+DEFAULT_DATA_PATH = Path("data/datasets/quality_records_2026.csv")
 DEFAULT_QUESTION = "请分析 2026-01-01 到 2026-01-31 A产线的不良率异常"
 
 
@@ -20,14 +20,11 @@ def main() -> None:
     args = parser.parse_args()
 
     data_path = Path(args.data)
-    if data_path.exists():
-        records = load_records(data_path)
-    else:
-        records = generate_records()
-        write_records(records, data_path)
-        print(f"已生成演示数据：{data_path.resolve()}\n")
+    if not data_path.is_file():
+        raise SystemExit(f"数据文件不存在：{data_path.resolve()}。请从 data/datasets 中选择年度数据集。")
+    records = load_records(data_path)
 
-    report = QualityAgent(records, log_dir=Path("logs")).answer(args.question)
+    report = QualityAgent(records, log_dir=Path("logs"), csv_path=data_path).answer(args.question)
     print(render_text_report(report))
 
 

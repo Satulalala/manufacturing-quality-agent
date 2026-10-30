@@ -45,7 +45,7 @@
       "expected_line": "B"
     },
     {
-      "question": "请分析 2026-01-01 到 2026-01-31 ID.4 车型的不良率异常",
+      "question": "请分析 2026-01-01 到 2026-01-31 M01-EV 车型的不良率异常",
       "expected_status": "success"
     },
     {
@@ -85,7 +85,7 @@
       "expected_status": "success"
     },
     {
-      "question": "今天的不良率怎么样",
+      "question": "请分析 2026-10-01 到 2026-10-18 的不良率",
       "expected_status": "success"
     },
     {
@@ -100,9 +100,9 @@
       "expected_end_date": "2026-01-15"
     },
     {
-      "question": "请分析 2026-01-01 到 2026-01-31 ID.4 车型的不良率",
+      "question": "请分析 2026-01-01 到 2026-01-31 M01-EV 车型的不良率",
       "expected_status": "success",
-      "expected_vehicle_model": "ID.4"
+      "expected_vehicle_model": "M01-EV"
     }
   ]
 }

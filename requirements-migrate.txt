@@ -1,0 +1,4 @@
+# Install only when importing sessions created by the former LangGraph checkpoint store.
+-r requirements.txt
+langgraph>=1.2,<2
+langgraph-checkpoint-sqlite>=3.1.2,<4

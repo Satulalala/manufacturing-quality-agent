@@ -4,9 +4,9 @@
 
 GitHub 仓库：https://github.com/Satulalala/manufacturing-quality-agent
 
-当前版本采用"Ollama 问题理解 + 确定性分析内核 + RAG 知识证据"架构：Ollama
-负责理解任务、日期范围和分析参数；程序校验结构化结果后，再由确定性 Python
-函数完成统计。LangGraph 编排工具，知识库采用 BM25 与向量混合检索。模型解析失败
+当前版本采用"Ollama 问题理解 + 受控 Agent loop + 确定性分析内核 + RAG 知识证据"架构：Ollama
+负责理解任务、日期范围和分析参数；分析时由受限 loop 根据已验证的工具结果选择下一步，
+参数和数据范围由程序校验，确定性 Python 工具完成统计。知识库采用 BM25 与向量混合检索。模型解析失败
 或条件不明确时会要求重试/补充，不会回退规则解析并静默分析全量数据。
 统计与筛选由确定性 Python 工具执行；本地问题解析默认不向云端发送数据。
 
@@ -31,13 +31,14 @@ GitHub 仓库：https://github.com/Satulalala/manufacturing-quality-agent
 - **参数异常检测**：Isolation Forest 检出温度/压力/扭矩的离群记录（结果确定）。
 - **知识库引用**：BM25＋本地 bge-m3 向量检索，用 RRF 融合排名；可进行规则重排
   或配置本地 CrossEncoder 模型。页面标明实际模式，向量不可用时降级 BM25。
+- **受控 Agent loop**：数据分析统一由模型在白名单内选择工具；每次调用校验参数、范围和预算，
+  通过必需证据检查后才完成报告。多步分析无需手动开关；普通问答仍走直接回答路径。
 - **按问题选择工具**：不良率分析、Cpk、SPC、参数异常、只读 SQL 与知识检索。
   Cpk 必须提供参数名和规格上下限；缺少必要输入时提示补充，不冒用演示规格。
 - **基于证据解释**：可选 LangChain 模型根据工具结果与知识引用生成解释；
   检查引用与数字，模型失败或校验不通过时使用确定性解释。
 - **可选 LangSmith**：记录运行过程；没有 API key 时不影响本地功能。
-- **调用链追踪**：页面展示完整执行过程（解析 → 筛选 → 分析 → 知识库 → 报告），
-  每次工具调用附记录，全流程可审计。
+- **调用链追踪**：页面展示本轮实际发生的解析、工具调用和报告阶段，并记录每次工具结果。
 - **结构化运行日志**：每次分析写入 `logs/run_*.json`（问题、筛选条件、每步
   耗时、状态、不良率、候选因素、人工确认标记），可追溯可统计。
 - **工具失败重试**：LLM 调用、SQL 执行自动重试（指数退避），网络抖动不降级。
@@ -65,7 +66,18 @@ npm run build
 cd ..
 ```
 
-构建完成后双击 `start_app.bat`。页面默认只监听本机 `127.0.0.1`，同一轮的统计、执行阶段和模型解释会按真实后端事件更新。上传 CSV 会保存在本机 `.cache/quality_workbench/sources`，会话复用现有 SQLite 检查点。
+构建完成后双击 `start_app.bat`。页面默认只监听本机 `127.0.0.1`，统计、loop 工具选择、执行阶段和模型解释会按真实后端事件更新。上传 CSV 会保存在本机 `.cache/quality_workbench/sources`，会话状态保存在 SQLite JSON 快照中。
+
+从旧版本升级且 `.cache/quality_agent_checkpoints.sqlite3` 仍有会话时，首次启动会备份旧 checkpoint 并导入会话状态。若旧环境没有 LangGraph 迁移依赖，先在旧虚拟环境执行一次启动/迁移，或安装 `requirements-migrate.txt` 后重启。迁移成功后 Agent loop 的正常会话读写不依赖 LangGraph；旧 checkpoint 文件保留作回退备份。
+
+若需要回退到旧代码，先安装迁移依赖并导出当前会话状态，避免只恢复旧备份而丢失新版本产生的消息：
+
+```powershell
+python -m pip install -r requirements-migrate.txt
+python -m scripts.export_legacy_checkpoints
+```
+
+该命令先将 SQLite JSON 会话状态写入临时 checkpoint 并逐会话校验，再备份并替换旧 checkpoint 文件。
 
 开发模式分别运行 API 和 Vite：
 
@@ -107,7 +119,7 @@ LangChain 生成解释。`.env.example` 提供变量说明，程序不会自动�
 
 只读 SQL 任务使用当前 CSV 和受控查询参数，不执行模型生成的任意 SQL。
 日期支持明确年份的中文日期，例如“2026年一月十五号之前”筛选至 `2026-01-14`，“之后”从 `2026-01-16` 开始；无法识别的相对日期及无年份的中文日期（Ollama 模式）要求补充，避免意外分析全部数据。
-多个任务同时出现时当前只执行路由选中的一个任务，尚未实现自由循环规划。
+任务解析确定本轮主任务后，loop 可根据工具观察继续对比、下钻或检索；执行范围和可用工具仍受程序约束，不允许模型运行任意代码。
 
 ### 检索对照评测与重排
 
@@ -178,9 +190,10 @@ Ollama 不可用或无法理解问题时，页面会停止分析并提示检查/
 
 ## 运行测试
 
-项目使用 Python 标准库 `unittest`：
+项目使用 Python 标准库 `unittest`。安装包含旧图兼容与状态迁移用例的测试依赖：
 
 ```powershell
+python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -v
 ```
 
@@ -196,8 +209,11 @@ flowchart LR
         CLI[命令行 run_demo.py]
         Eval[评测 evaluation/evaluate.py]
     end
-    subgraph Agent[Agent 编排层]
-        Graph[LangGraph 状态图<br/>agent/graph.py]
+    subgraph Agent[Agent 运行控制层]
+        Route[直接问答 / 数据分析路由]
+        Loop[受控 Agent loop<br/>agent/decision.py]
+        Scope[筛选范围 / 证据校验<br/>agent/workflow.py]
+        State[SQLite 会话 JSON 状态<br/>agent/session_store.py]
     end
     subgraph Tools[工具层]
         P[Ollama 结构化问题理解<br/>任务/日期/筛选/工具参数]
@@ -214,8 +230,11 @@ flowchart LR
     subgraph Local[本地模型层]
         Ollama[(Ollama<br/>qwen3:4b-q4_K_M + bge-m3)]
     end
-    UI --> Graph
-    Graph --> P & Q & A & K
+    UI --> Route
+    Route --> Loop
+    Loop --> P & Q & A & K
+    Scope --> Loop
+    Loop --> State
     P --> Ollama
     K --> Ollama
     Q --> CSV
@@ -227,17 +246,22 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    Q[自然语言问题] --> P[Ollama 结构化理解任务与条件]
-    P --> F[filter_records 安全筛选记录]
-    F --> D{有匹配数据?}
-    D -- 否 --> ND[no_data<br/>诚实报告，不编造结论]
-    D -- 是 --> B[calculate_defect_rate 基线不良率]
-    B --> R[rank_candidate_causes 候选因素排序]
-    R --> TR[detect_trend_change 趋势跳变]
-    R --> AN[detect_anomalies 参数异常]
-    R --> K[retrieve_quality_documents 知识库检索]
-    TR & AN & K --> G[generate_report 结构化报告]
-    G --> OUT[结论 + 数据证据 + 样本量<br/>知识库引用 + 调用链 + 风险提示]
+    Q[用户提问] --> R{任务路由}
+    R -->|普通问答 / 记忆| DA[直接回答，不读取产线记录]
+    R -->|数据分析| P[解析任务并锁定本轮范围]
+    P -->|缺少必要条件| ASK[询问用户补充]
+    P -->|条件完整| L[Agent loop 构建上下文]
+    L --> M[Ollama 返回 call_tool / ask_user / finish]
+    M --> V{校验动作、参数、范围和预算}
+    V -->|拒绝或重试| L
+    V -->|通过| T[执行白名单质量工具]
+    T --> O[记录 observation、数据版本和证据]
+    O -->|继续调查| L
+    O -->|无数据 / 缺输入 / 错误| S[返回明确状态]
+    M -->|finish| G{检查本轮目标所需证据}
+    G -->|证据不足| L
+    G -->|证据齐全| H[生成经数字校验的报告和图表]
+    DA & ASK & S & H --> OUT[回答 + 检索范围 + 运行状态]
 ```
 
 ## 旧数据集评测归档（2026-08-09，2400 条）
@@ -293,8 +317,10 @@ tools/anomaly_tool.py          趋势/异常检测的 Agent 调用包装层
 tools/capability_tool.py       Pareto/Cpk/SPC 的 Agent 调用包装层
 tools/knowledge_tool.py        知识库检索工具（无命中时明确说明）
 agent/workflow.py              Agent 公共入口和报告渲染（兼容层）
-agent/graph.py                 LangGraph 节点图（parse→query→analyze→knowledge→report）
-agent/state.py                 LangGraph 状态定义
+agent/decision.py              受限 Agent loop、动作和工具证据状态机
+agent/graph.py                 解析、报告共用函数；旧图构建器仅用于兼容/对照
+agent/state.py                 分析所需结构化状态
+agent/session_store.py         SQLite 会话索引和 JSON 状态；导入旧 checkpoint
 agent/llm_parser.py            Ollama 结构化问题理解与模型输出校验
 agent/run_logger.py            结构化运行日志（logs/run_*.json）
 tools/retry.py                 工具调用重试（指数退避）
@@ -310,7 +336,7 @@ tasks/plan.md                  切片二至十的开发规格与验收记录
 
 ## 简历项目描述
 
-> 面向新能源汽车制造质量场景，基于 LangGraph 设计制造质量根因分析 Agent，
+> 面向汽车制造质量场景，设计受控 Agent loop 与确定性质量分析工具，
 > 集成 DuckDB 只读 SQL 查询、异常检测、Pareto/Cpk/SPC 质量分析工具、语义
 > 向量检索知识库（本地 bge-m3，支持同义表达召回）和结构化报告生成；问题
 > 解析使用本地 Ollama qwen2.5:7b（工业数据不出厂），失败时停止分析并提示重试或
@@ -331,3 +357,340 @@ tasks/plan.md                  切片二至十的开发规格与验收记录
 候选因素是基于分组统计差异的优先级排序，不等于已证明的因果关系。进入真实
 生产环境前，需要接入经过授权的数据、权限控制、人工审核和更严格的工业安全
 流程。当前问题解析仅支持有限的日期格式和产线词汇，详见 docs/cases.md。
+
+---
+
+# English
+
+# Manufacturing Quality Root Cause Agent
+
+An MVP for manufacturing quality root-cause analysis in the new-energy vehicle manufacturing domain.
+
+GitHub repository: [Satulalala/manufacturing-quality-agent](https://github.com/Satulalala/manufacturing-quality-agent)
+
+The current version uses an “Ollama understanding + bounded Agent loop + deterministic analysis + RAG evidence” architecture. The program validates the parsed task and locks the data scope; the loop then chooses from allowlisted tools based on recorded results. Python tools calculate quality metrics, while a report gate checks required evidence. Ordinary questions use a direct-answer path. The knowledge base uses hybrid BM25 and vector retrieval. If parsing fails or conditions are unclear, the app asks the user for clarification instead of analyzing the entire dataset.
+
+Statistics and filtering are performed by deterministic Python tools. By default, local question parsing does not send data to the cloud.
+
+## Workbench Screenshot
+
+<p align="center">
+  <img src="docs/images/quality-agent-result-modal.png" alt="Quality Agent analysis result and candidate risk factor chart" width="100%" />
+</p>
+
+> The screenshot shows the analysis result dialog in the local workbench and uses synthetic demo data.
+
+## Features
+
+- **Natural-language questions:** Local Ollama interprets the task, date range (including the early, middle, and late parts of a month), vehicle model, production line, and tool parameters. The program validates model output; keyword rules do not replace model understanding.
+- **Defect-rate analysis:** Calculate the total defect rate, defect count, and sample size for a specified range.
+- **Candidate factor ranking:** Compare groups by station, shift, supplier, and batch, then rank the top three factors to investigate, with defect rate, sample size, data evidence, and a recommendation for human review.
+- **Quality analysis toolbox:** Pareto analysis of defect types (share / cumulative share), Cpk process capability classification (capable / marginal / not_capable), and SPC control-limit checks that locate out-of-limit points.
+- **Trend change detection:** Compare before-and-after windows to locate the date when the defect rate changed sharply.
+- **Parameter anomaly detection:** Isolation Forest detects outlier temperature, pressure, and torque records with deterministic results.
+- **Knowledge-base citations:** BM25 plus local bge-m3 vector retrieval, with reciprocal rank fusion (RRF). Optional rule-based reranking or a local CrossEncoder model is supported. The UI shows the active mode and falls back to BM25 when vectors are unavailable.
+- **Question-based tool selection:** Defect-rate analysis, Cpk, SPC, parameter anomalies, read-only SQL, and knowledge retrieval. Cpk requires a parameter name and specification limits; missing inputs prompt the user instead of reusing demo specifications.
+- **Bounded Agent loop:** Analysis requests use one controlled loop. The model chooses among allowlisted tools; the program validates scope, arguments, call budget, and required evidence. No “multi-step analysis” switch is needed.
+- **Evidence-based explanations:** An optional LangChain model can explain tool results and knowledge citations. Citations and numbers are checked; if the model fails or validation does not pass, a deterministic explanation is used.
+- **Optional LangSmith:** Records run traces. Local functionality works without an API key.
+- **Execution tracing:** The UI shows the real parsing, tool, evidence, and report stages for the current run, with each tool result recorded.
+- **Structured run logs:** Each analysis writes to `logs/run_*.json` with the question, filters, time per step, status, defect rate, candidate factors, and human-review markers for later inspection and statistics.
+- **Tool failure retries:** LLM calls and SQL execution retry automatically with exponential backoff; transient network issues do not trigger a silent downgrade.
+- **Human-review markers:** Candidate conclusions from statistical analysis carry a `requires_human_review` marker. The UI provides a “Mark as confirmed” button, reflecting the industrial constraint that correlation does not establish causation.
+- **Parsed-condition display:** The UI shows the parsed query conditions for the current question (date range / production line / vehicle model) so parsing errors are visible immediately.
+- **Knowledge citation cards:** Matches appear as cards with the document name, section, and source excerpt; no-match results are stated explicitly.
+- **Read-only SQL tool:** DuckDB queries use table and column allowlists; malicious SQL is rejected.
+- **Fixed-question evaluation:** Automatically evaluates 22 questions and reports completion rate, accuracy, and response time.
+
+## Quick Start
+
+Requirement: Python 3.10 or later.
+
+### New Agent Workbench (Recommended)
+
+The new workbench uses a separate React page, while analysis continues to run in the local Python Agent. Node.js is needed for the first setup; after the frontend is built, only Python is required for later launches.
+
+```powershell
+python -m pip install -r requirements.txt
+cd frontend
+npm ci
+npm run build
+cd ..
+```
+
+After the build, double-click `start_app.bat`. The page listens on the local machine at `127.0.0.1` by default. Statistics, execution stages, and model explanations update from actual backend events during the same run. Uploaded CSV files are stored locally in `.cache/quality_workbench/sources`, and session state is stored as JSON snapshots in SQLite.
+
+When upgrading from a version with `.cache/quality_agent_checkpoints.sqlite3`, the first startup backs up the legacy checkpoint database and imports saved session states. If the old database exists but the migration dependency is missing, install `requirements-migrate.txt` and restart. New session reads and writes do not use LangGraph after migration.
+
+Before rolling back to older code, export the current JSON session state so new messages are not lost:
+
+```powershell
+python -m pip install -r requirements-migrate.txt
+python -m scripts.export_legacy_checkpoints
+```
+
+The command writes to a temporary checkpoint, validates each session, then backs up and replaces the legacy checkpoint file.
+
+In development mode, run the API and Vite separately:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn server.main:app --host 127.0.0.1 --port 8000
+cd frontend
+npm run dev
+```
+
+The development page is at `http://127.0.0.1:5173`. Vite proxies `/api` requests to the local API.
+
+### AI Extensions and Real Local Models
+
+Using the project virtual environment is recommended. `start_app.bat` prefers the Python interpreter in `.venv`:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-ai.txt
+
+# Prepare the models after installing Ollama; skip pulls for models already on this machine.
+ollama pull qwen3:4b-q4_K_M
+ollama pull bge-m3
+$env:QUALITY_LLM_MODEL = "qwen3:4b-q4_K_M"
+$env:QUALITY_LLM_TIMEOUT = "60"
+.\.venv\Scripts\python.exe run_demo.py "Analyze the defect rate on line A from 2026-01-01 to 2026-01-31"
+```
+
+Question parsing always uses local Ollama. Set `QUALITY_AGENT_LANGCHAIN=false` to disable LangChain-generated explanations. `.env.example` documents the variables; the program does not load `.env` automatically.
+
+The default model is `qwen3:4b-q4_K_M` (about 2.6 GB for the official Ollama quantized package), chosen to balance local inference speed with common quality-filter parsing. Ollama's default timeout is 60 seconds and can be adjusted from 1 to 120 seconds with `QUALITY_LLM_TIMEOUT`. Before changing models, run the matching `ollama pull` command and set `QUALITY_LLM_MODEL`.
+
+Example tool questions:
+
+- `Calculate torque Cpk on line A from 2026-01-01 to 2026-01-31, USL=50, LSL=40`
+- `Analyze the pressure SPC control limits on line A`
+- `Detect anomalous temperature, pressure, and torque records on line A`
+- `Query line A data from 2026-01-01 to 2026-01-03`
+- `Find maintenance cases involving low torque`
+
+Read-only SQL tasks use the current CSV and controlled query parameters; the app does not execute arbitrary SQL generated by a model. Dates support Chinese expressions with an explicit year. For example, `2026年一月十五号之前` filters through `2026-01-14`, while `之后` starts from `2026-01-16`. In Ollama mode, unrecognized relative dates and Chinese dates without a year prompt for clarification to avoid accidentally analyzing all data.
+
+After task routing, the loop may compare, drill down, or retrieve knowledge based on tool results. Program checks still limit available tools and preserve the selected data scope; the model cannot execute arbitrary code.
+
+### Retrieval Comparison, Evaluation, and Reranking
+
+```powershell
+.\.venv\Scripts\python.exe -m evaluation.retrieval_benchmark --top-k 3 --json evaluation/retrieval_report.json
+```
+
+On the same corpus and question set, this compares keyword, BM25, vector-only, hybrid, and hybrid-plus-reranking retrieval by Recall@K, MRR, and query time. If vector search is unavailable, affected approaches are marked `skipped`; BM25 results are never presented as vector results. The default reranker uses word-matching rules and is labeled `lexical` in the report; it is not described as neural reranking.
+
+To use a local CrossEncoder model for actual reranking:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install sentence-transformers
+$env:RAG_RERANKER_MODEL = "D:\Models\your-reranker-model-directory"
+.\.venv\Scripts\python.exe -m evaluation.retrieval_benchmark --rerank-mode cross_encoder --reranker-model $env:RAG_RERANKER_MODEL
+```
+
+The model is loaded only from a configured local directory. If the package or model path is missing, the report records the reason.
+
+### LangSmith Tracing
+
+Tracing is disabled by default. Prepare your own API key and confirm that uploading the trace data for this run is acceptable before setting these values in the same terminal used to launch the program:
+
+```powershell
+$env:QUALITY_LANGSMITH_TRACING = "true"
+$env:LANGSMITH_API_KEY = "your API key"
+$env:LANGSMITH_PROJECT = "manufacturing-quality-agent"
+.\.venv\Scripts\python.exe run_demo.py
+```
+
+Local JSON logs are still kept. Remote tracing and model calls use separate data paths, so disabling remote tracing does not affect model calls. Traces help with debugging; evaluation correctness is still determined by human-labeled questions and business criteria.
+
+Learning notes about the implemented Agent loop and its differences from LangChain `create_agent` and LangGraph are in `docs/进阶学习补充.md` and the desktop learning roadmap. The roadmap keeps its existing structure and historical notes; its current-architecture sections have been updated to match this implementation.
+
+### Command-Line Version
+
+```powershell
+python run_demo.py
+```
+
+You can also pass a question:
+
+```powershell
+python run_demo.py "Analyze the defect-rate anomaly on line B from 2026-01-01 to 2026-01-15"
+```
+
+The workbench loads `data/datasets/quality_records_2026.csv` by default and also provides 2022–2025 annual data sources for selection and multi-file comparison. All five datasets contain reproducible synthetic records and do not represent production data from any real company. See the [data dictionary](data/datasets/README.md) for field definitions and limitations.
+
+### Evaluation
+
+```powershell
+# Evaluation questions are parsed by local Ollama.
+python evaluation/evaluate.py
+```
+
+### Configure Local Ollama for Question Parsing
+
+```powershell
+# Question parsing always uses local Ollama. Install Ollama and pull the model first.
+ollama pull qwen3:4b-q4_K_M
+```
+
+If Ollama is unavailable or cannot understand the question, the page stops the analysis and asks you to check or clarify the conditions. Quality statistics are still calculated by deterministic tools.
+
+## Run Tests
+
+The project uses Python's standard-library `unittest`:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+> Some tests (vector retrieval) call local Ollama and take about six minutes when run in full. Without Ollama, these tests automatically fall back to keyword retrieval and can still pass.
+
+## System Architecture
+
+```mermaid
+flowchart LR
+    subgraph UI[Presentation Layer]
+        App[React + Vite workbench<br/>FastAPI local API]
+        CLI[Command line run_demo.py]
+        Eval[Evaluation evaluation/evaluate.py]
+    end
+    subgraph Agent[Agent Orchestration Layer]
+        Route[Direct answer / data analysis routing]
+        Loop[Bounded Agent loop<br/>agent/decision.py]
+        Scope[Scope and evidence checks<br/>agent/workflow.py]
+        State[SQLite JSON session state<br/>agent/session_store.py]
+    end
+    subgraph Tools[Tool Layer]
+        P[Ollama structured question understanding<br/>task/date/filters/tool parameters]
+        Q[filter_records data filtering]
+        A[Quality analysis<br/>defect rate/trend/anomaly/Pareto/Cpk/SPC]
+        K[Knowledge retrieval<br/>bge-m3 vectors + bigram fallback]
+        S[run_readonly_query<br/>DuckDB read-only SQL]
+        R[retry / run_logger]
+    end
+    subgraph Data[Data and Knowledge Layer]
+        CSV[(data/datasets/<br/>synthetic data for 2022–2026)]
+        Docs[(docs/ quality documents<br/>standards/defect guides/cases)]
+    end
+    subgraph Local[Local Model Layer]
+        Ollama[(Ollama<br/>qwen3:4b-q4_K_M + bge-m3)]
+    end
+    UI --> Route
+    Route --> Loop
+    Loop --> P & Q & A & K
+    Scope --> Loop
+    Loop --> State
+    P --> Ollama
+    K --> Ollama
+    Q --> CSV
+    S --> CSV
+    K --> Docs
+```
+
+## Agent Execution Flow
+
+```mermaid
+flowchart TD
+    Q[Natural-language question] --> ROUTE{Question type?}
+    ROUTE -->|General / confirmed memory| DIRECT[Answer directly]
+    ROUTE -->|Data analysis| PARSE[Parse task and lock scope]
+    PARSE -->|Ambiguous / missing input| ASK[Ask for clarification]
+    PARSE -->|Valid| LOOP[Build minimal context]
+    LOOP --> MODEL[Ollama proposes a JSON action]
+    MODEL --> CHECK{Allowlisted and valid?}
+    CHECK -->|No| LOOP
+    CHECK -->|Yes| TOOL[Run deterministic quality tool]
+    TOOL --> OBS[Save observation and evidence]
+    OBS -->|More evidence needed| LOOP
+    MODEL -->|Finish| GATE{Required evidence present?}
+    GATE -->|No| LOOP
+    GATE -->|Yes| REPORT[Validate numbers and build report]
+    DIRECT & ASK & REPORT --> OUT[Answer and execution status]
+```
+
+## Archived Evaluation on the Old Dataset (2026-08-09, 2,400 Records)
+
+The following metrics came from the deleted legacy `data/demo_records.csv` and are retained only as historical records. They do not describe the current `data/datasets/` performance.
+
+| Metric | Result |
+|---|---|
+| Task completion rate | 22/22 = 100% |
+| Numeric accuracy | 14/14 = 100% |
+| Candidate factor hit rate | 100% |
+| Citation accuracy | 100% |
+| SQL success rate | 6 checks (3 valid + 3 malicious) = 100% |
+| Human review approval rate | 20/20 = 100% |
+| Average response time | About 3.2 s (including vector retrieval) |
+| Status distribution | success 20, no_data 2 |
+
+With qwen2.5:7b as the local Ollama parsing backend, task completion and numeric accuracy were also 100%, with an average response time of about 7 seconds.
+
+## Successful and Failed Cases
+
+See [docs/cases.md](docs/cases.md). Summary:
+
+**Historical example note**
+
+Specific hit rates and trend values from the old single-month demo dataset do not apply to the current multi-year dataset. All quality patterns in the current dataset are synthetic scenarios. Reanalyze the selected data source before drawing conclusions; simulated correlations must not be interpreted as real-world causation.
+
+**Fixed failure cases (LLM parsing backend)**
+
+1. Vehicle-model question: `ID.4 model` is now parsed correctly as `vehicle_model=ID.4`.
+2. Chinese date range: `1月1日到1月15日` is now converted correctly to `2026-01-01 ~ 2026-01-15`.
+3. Multiple production lines: `A产线和B产线` is now parsed as `["A", "B"]`, and both lines are included in the statistics.
+
+## Code Structure
+
+```text
+analytics/quality_analysis.py      pure Python quality analysis functions
+analytics/trend_analysis.py        defect-rate trend change detection (before/after windows)
+analytics/anomaly_detection.py     Isolation Forest process parameter anomaly detection
+analytics/pareto.py                Pareto analysis of defect types (share/cumulative share)
+analytics/process_capability.py    Cp/Cpk process capability indices
+analytics/spc_analysis.py          SPC control limits and out-of-limit point detection
+data/datasets/                     standardized synthetic quality data for 2022–2026
+data/generate_quality_datasets.py  reproducible annual data generation script
+data/demo_data.py                  small compatible test sample and CSV reader
+docs/                              quality knowledge base (standards/defect guides/repair cases) and project docs
+rag/ingest.py                      knowledge document chunking and indexing (explicit filename allowlist)
+rag/retriever.py                   deterministic character bigram retrieval (fallback)
+rag/embedding.py                   local Ollama embedding client (bge-m3)
+rag/vector_retriever.py             semantic vector search (cosine similarity) + vector index
+tools/quality_tools.py             data-filtering tools available to the Agent
+tools/sql_tool.py                  DuckDB read-only SQL tool (table/column allowlists)
+tools/anomaly_tool.py               Agent wrappers for trend and anomaly detection
+tools/capability_tool.py            Agent wrappers for Pareto/Cpk/SPC
+tools/knowledge_tool.py             knowledge retrieval tool (explicitly reports no matches)
+agent/workflow.py                   Agent public entry point and report rendering (compatibility layer)
+agent/decision.py                   Bounded Agent loop and tool evidence state machine
+agent/graph.py                      Shared parse/report helpers; legacy graph builder for compatibility
+agent/state.py                      Structured analysis state
+agent/session_store.py              SQLite session index and JSON state; legacy checkpoint import
+agent/llm_parser.py                 Ollama structured question understanding and output validation
+agent/run_logger.py                 structured run logs (logs/run_*.json)
+tools/retry.py                      tool-call retries (exponential backoff)
+frontend/                           React + TypeScript workbench
+server/                             FastAPI endpoints and local runtime
+start_app.bat                       launcher for the new workbench
+run_demo.py                         command-line entry point
+evaluation/cases.json               fixed question set (22 questions)
+evaluation/evaluate.py              evaluation: completion/numeric accuracy/response time
+tests/                              Agent, analysis, and data service tests
+tasks/plan.md                       development specs and acceptance records for slices two through ten
+```
+
+## Resume Project Description
+
+> Built a manufacturing quality Agent workbench around a bounded model-tool loop, deterministic quality analytics, local Ollama, FastAPI/React, and hybrid RAG. The program validates scope and tool arguments, records observations, checks evidence before producing results, and stores session state in SQLite. Implemented single-file and multi-file analysis, Cpk/SPC/Pareto tools, streaming run events, and evidence-backed reports. Describe model performance and operational impact only with results from a reproducible evaluation of the current model and dataset.
+
+## Potential Extensions
+
+1. Evaluate Agent-loop completion and scope accuracy with the configured Ollama model on a fixed question set; the deterministic test fixture is not a substitute for this model acceptance run.
+2. Add MCP only if the Agent needs to connect to external tools or services through a shared protocol.
+3. Consider PostgreSQL and multi-user deployment when concurrent users, remote access, or operational recovery become actual requirements.
+4. Expand evaluation for citation accuracy, tool selection, scope adherence, and human-review outcomes.
+
+## Important Limitations
+
+Candidate factors are ranked by grouped statistical differences; this does not prove causation. Before using the system in production, connect authorized data and add access controls, human review, and stricter industrial safety processes. Current question parsing supports only a limited set of date formats and production-line terms; see `docs/cases.md`.

@@ -42,6 +42,7 @@ def analyze_process_capability(
     field: str = "torque",
     usl: float | None = None,
     lsl: float | None = None,
+    unit: str | None = None,
 ) -> dict[str, object]:
     """Compute Cpk for one process parameter and attach a recommendation."""
 
@@ -74,6 +75,8 @@ def analyze_process_capability(
         "insufficient": "样本不足，补充数据后再评估。",
     }
     result["recommendation"] = recommendations.get(result["status"], "结合现场确认。")
+    if unit:
+        result["unit"] = unit
     return result
 
 
